@@ -23,6 +23,8 @@ const MANIFEST_MARKER = '[telegram-drive-manifest-v1]';
 const MANIFEST_FILENAME = '.telegram-drive-manifest.json';
 const MANIFEST_BACKUP_COUNT = 5;
 const MANIFEST_EVENT_LIMIT = 2000;
+const TELEGRAM_UPLOAD_MIN_INTERVAL_MS = 1200;
+const TELEGRAM_UPLOAD_MAX_ATTEMPTS = 4;
 
 type DriveEventType =
     | 'folder_created'
@@ -95,6 +97,7 @@ let manifestCache: DriveManifest | null = null;
 let pendingRemoteManifest: DriveManifest | null = null;
 let remoteManifestTimer: ReturnType<typeof setTimeout> | null = null;
 let remoteManifestWrite: Promise<void> = Promise.resolve();
+let nextTelegramUploadAt = 0;
 
 export async function telegramConnect(apiId?: number): Promise<boolean> {
     const client = await getTelegramClient(apiId);
@@ -210,7 +213,7 @@ export async function telegramCreateFolder(name: string, parentId: number | null
     if (parentId !== null) folder.parent_id = parentId;
     manifest.folders.push(folder);
     appendManifestEvent(manifest, 'folder_created', { folderId: folder.id, name, parentId });
-    await saveDriveManifest(manifest);
+    await saveDriveManifest(manifest, 'debounced');
     return folder;
 }
 
@@ -307,7 +310,7 @@ export async function telegramDeleteFile(messageId: number): Promise<boolean> {
     };
     manifest.fileFolders[key] = manifest.files[key].folderId ?? null;
     appendManifestEvent(manifest, 'file_trashed', { messageId });
-    await saveDriveManifest(manifest);
+    await saveDriveManifest(manifest, 'debounced');
     return true;
 }
 
@@ -325,7 +328,7 @@ export async function telegramRestoreFile(messageId: number): Promise<boolean> {
     };
     manifest.fileFolders[key] = manifest.files[key].folderId ?? null;
     appendManifestEvent(manifest, 'file_restored', { messageId });
-    await saveDriveManifest(manifest);
+    await saveDriveManifest(manifest, 'debounced');
     return true;
 }
 
@@ -336,7 +339,7 @@ export async function telegramPermanentlyDeleteFile(messageId: number): Promise<
     delete manifest.fileFolders[String(messageId)];
     delete manifest.files[String(messageId)];
     appendManifestEvent(manifest, 'file_deleted', { messageId });
-    await saveDriveManifest(manifest);
+    await saveDriveManifest(manifest, 'debounced');
     return true;
 }
 
@@ -401,7 +404,7 @@ export async function telegramUploadFile(
         Buffer.from(await file.arrayBuffer())
     );
 
-    const message = await client.sendFile('me', {
+    const message = await sendTelegramFileWithRetry(client, 'me', {
         file: uploadFile,
         fileSize: file.size,
         forceDocument: true,
@@ -440,7 +443,7 @@ export async function telegramUploadFile(
             count: duplicates.length,
         });
     }
-    await saveDriveManifest(manifest);
+    await saveDriveManifest(manifest, 'debounced');
     onProgress?.(100);
     return toTelegramFile(message, manifest);
 }
@@ -518,7 +521,7 @@ export async function telegramRepairManifest(): Promise<{
     }
 
     appendManifestEvent(manifest, 'manifest_repaired', { indexed, refreshed, missing });
-    await saveDriveManifest(manifest);
+    await saveDriveManifest(manifest, 'debounced');
 
     return {
         indexed,
@@ -619,7 +622,7 @@ async function getDriveManifest(forceRemote = false): Promise<DriveManifest> {
     persistManifestLocally(manifestCache);
 
     if (shouldWriteRemote) {
-        await writeRemoteManifest(manifestCache);
+        queueRemoteManifestWrite(manifestCache, remote ? 800 : 1500);
     }
 
     return cloneManifest(manifestCache);
@@ -651,14 +654,14 @@ async function saveDriveManifest(manifest: DriveManifest, mode: 'immediate' | 'd
     await writeRemoteManifest(normalized);
 }
 
-function queueRemoteManifestWrite(manifest: DriveManifest) {
+function queueRemoteManifestWrite(manifest: DriveManifest, delayMs = 2500) {
     pendingRemoteManifest = cloneManifest(manifest);
     if (remoteManifestTimer) {
         clearTimeout(remoteManifestTimer);
     }
     remoteManifestTimer = setTimeout(() => {
         void flushRemoteManifest();
-    }, 2500);
+    }, delayMs);
 }
 
 async function flushRemoteManifest(): Promise<void> {
@@ -671,8 +674,16 @@ async function flushRemoteManifest(): Promise<void> {
     if (!manifest) return remoteManifestWrite;
 
     pendingRemoteManifest = null;
-    remoteManifestWrite = remoteManifestWrite.then(() => writeRemoteManifest(manifest));
-    await remoteManifestWrite;
+    const writeTask = remoteManifestWrite
+        .catch(() => undefined)
+        .then(() => writeRemoteManifest(manifest))
+        .catch((err) => {
+            queueRemoteManifestWrite(manifest, getTelegramRetryDelayMs(err, 0));
+            throw err;
+        });
+
+    remoteManifestWrite = writeTask.catch(() => undefined);
+    await writeTask;
 }
 
 async function loadRemoteManifest(): Promise<DriveManifest | null> {
@@ -730,7 +741,7 @@ async function writeRemoteManifest(manifest: DriveManifest): Promise<void> {
         search: MANIFEST_MARKER,
     })) as TelegramMessage[];
 
-    const newMessage = await client.sendFile('me', {
+    const newMessage = await sendTelegramFileWithRetry(client, 'me', {
         file: manifestFile,
         fileSize: bytes.length,
         forceDocument: true,
@@ -1166,7 +1177,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.1.8-web',
+        appVersion: '1.1.10-web',
     });
 
     await client.connect();
@@ -1335,4 +1346,85 @@ function createVirtualFolderId(): number {
     const next = Math.max(current + 1, Date.now() + randomOffset);
     localStorage.setItem(NEXT_FOLDER_ID_KEY, String(next));
     return next;
+}
+
+type SendFileOptions = Parameters<TelegramClientInstance['sendFile']>[1];
+
+async function sendTelegramFileWithRetry(
+    client: TelegramClientInstance,
+    entity: string,
+    options: SendFileOptions
+): Promise<TelegramMessage> {
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < TELEGRAM_UPLOAD_MAX_ATTEMPTS; attempt++) {
+        try {
+            await waitForTelegramUploadSlot();
+            const message = await client.sendFile(entity, options);
+            nextTelegramUploadAt = Date.now() + TELEGRAM_UPLOAD_MIN_INTERVAL_MS;
+            return message as TelegramMessage;
+        } catch (err) {
+            lastError = err;
+            if (attempt >= TELEGRAM_UPLOAD_MAX_ATTEMPTS - 1 || !isRetryableTelegramError(err)) {
+                break;
+            }
+            await sleep(getTelegramRetryDelayMs(err, attempt));
+        }
+    }
+
+    throw new Error(formatTelegramUploadError(lastError));
+}
+
+async function waitForTelegramUploadSlot(): Promise<void> {
+    const delay = nextTelegramUploadAt - Date.now();
+    if (delay > 0) await sleep(delay);
+}
+
+function getTelegramRetryDelayMs(err: unknown, attempt: number): number {
+    const message = getTelegramErrorMessage(err);
+    const floodSeconds = parseTelegramFloodWaitSeconds(message);
+    if (floodSeconds !== null) {
+        return Math.min((floodSeconds + 1) * 1000, 60_000);
+    }
+    return Math.min(1500 * 2 ** attempt, 12_000);
+}
+
+function parseTelegramFloodWaitSeconds(message: string): number | null {
+    const patterns = [
+        /FLOOD_WAIT_?(\d+)/i,
+        /wait of (\d+) seconds?/i,
+        /flood wait.*?(\d+)/i,
+    ];
+
+    for (const pattern of patterns) {
+        const match = message.match(pattern);
+        if (match?.[1]) return Number(match[1]);
+    }
+
+    return null;
+}
+
+function isRetryableTelegramError(err: unknown): boolean {
+    const message = getTelegramErrorMessage(err).toLowerCase();
+    return parseTelegramFloodWaitSeconds(message) !== null
+        || message.includes('timeout')
+        || message.includes('network')
+        || message.includes('connection')
+        || message.includes('socket')
+        || message.includes('server')
+        || message.includes('500')
+        || message.includes('rpc_call_fail');
+}
+
+function formatTelegramUploadError(err: unknown): string {
+    const message = getTelegramErrorMessage(err);
+    const floodSeconds = parseTelegramFloodWaitSeconds(message);
+    if (floodSeconds !== null) {
+        return `Telegram rate limit. Wait ${floodSeconds}s and try again.`;
+    }
+    return message || 'Telegram upload failed';
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
 }

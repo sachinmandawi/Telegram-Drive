@@ -52,6 +52,11 @@ export function UploadQueue({ items, onClearFinished, onCancelAll }: UploadQueue
                                 )}
                             </div>
                         )}
+                        {item.status === 'error' && item.error && (
+                            <div className="pl-5 text-[11px] leading-snug text-red-300 break-words" title={item.error}>
+                                {item.error}
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>
