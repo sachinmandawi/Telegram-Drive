@@ -1,10 +1,10 @@
-use tauri::State;
-use tauri::Manager;
-use grammers_client::types::Media;
-use base64::{Engine as _, engine::general_purpose};
-use crate::TelegramState;
 use crate::bandwidth::BandwidthManager;
 use crate::commands::utils::resolve_peer;
+use crate::TelegramState;
+use base64::{engine::general_purpose, Engine as _};
+use grammers_client::types::Media;
+use tauri::Manager;
+use tauri::State;
 
 const PREVIEW_CACHE_MAX_FILES: usize = 30;
 const PREVIEW_CACHE_MAX_TOTAL_BYTES: u64 = 80 * 1024 * 1024;
@@ -47,11 +47,10 @@ fn text_preview_mime(ext: &str, mime_hint: Option<&str>) -> Option<String> {
 
     let normalized_ext = ext.to_ascii_lowercase();
     let mapped = match normalized_ext.as_str() {
-        "txt" | "text" | "log" | "ini" | "cfg" | "conf" | "toml" | "yaml" | "yml"
-        | "md" | "markdown" | "csv" | "tsv" | "xml" | "html" | "htm"
-        | "css" | "scss" | "less" | "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs"
-        | "py" | "java" | "c" | "cpp" | "cc" | "h" | "hpp" | "cs" | "go"
-        | "rs" | "php" | "rb" | "sh" | "bash" | "zsh" | "ps1" | "bat"
+        "txt" | "text" | "log" | "ini" | "cfg" | "conf" | "toml" | "yaml" | "yml" | "md"
+        | "markdown" | "csv" | "tsv" | "xml" | "html" | "htm" | "css" | "scss" | "less" | "js"
+        | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "py" | "java" | "c" | "cpp" | "cc" | "h"
+        | "hpp" | "cs" | "go" | "rs" | "php" | "rb" | "sh" | "bash" | "zsh" | "ps1" | "bat"
         | "cmd" | "sql" | "rtf" => "text/plain;charset=utf-8",
         "json" | "jsonl" => "application/json;charset=utf-8",
         _ => "",
@@ -62,10 +61,16 @@ fn text_preview_mime(ext: &str, mime_hint: Option<&str>) -> Option<String> {
     }
 
     match lower_mime.as_str() {
-        "application/json" | "application/ld+json" => Some("application/json;charset=utf-8".to_string()),
-        "application/xml" | "application/javascript" | "application/x-javascript" |
-        "application/sql" | "application/x-sh" | "application/x-httpd-php" |
-        "application/rtf" => Some(format!("{};charset=utf-8", lower_mime)),
+        "application/json" | "application/ld+json" => {
+            Some("application/json;charset=utf-8".to_string())
+        }
+        "application/xml"
+        | "application/javascript"
+        | "application/x-javascript"
+        | "application/sql"
+        | "application/x-sh"
+        | "application/x-httpd-php"
+        | "application/rtf" => Some(format!("{};charset=utf-8", lower_mime)),
         _ => None,
     }
 }
@@ -95,8 +100,10 @@ pub async fn cmd_get_preview(
     };
 
     let peer = resolve_peer(&client, folder_id, &state.peer_cache).await?;
-    let messages = client.get_messages_by_id(&peer, &[message_id])
-        .await.map_err(|e| e.to_string())?;
+    let messages = client
+        .get_messages_by_id(&peer, &[message_id])
+        .await
+        .map_err(|e| e.to_string())?;
     let target_message = messages.into_iter().flatten().next();
 
     if let Some(msg) = target_message {
@@ -124,7 +131,7 @@ pub async fn cmd_get_preview(
                         }
                     }
                     e
-                },
+                }
                 Media::Photo(_) => "jpg".to_string(),
                 _ => "bin".to_string(),
             };
@@ -154,7 +161,7 @@ pub async fn cmd_get_preview(
                             bw_state.add_down(size);
                             prune_preview_cache(&cache_dir);
                             true
-                        },
+                        }
                         Err(e) => {
                             log::error!("Preview Download Error: {}", e);
                             false
@@ -174,13 +181,14 @@ pub async fn cmd_get_preview(
                             };
                             let b64 = general_purpose::STANDARD.encode(preview_bytes);
                             return Ok(format!("data:{};base64,{}", mime, b64));
-                        },
+                        }
                         Err(e) => {
                             log::error!("Failed to read text preview: {}", e);
                         }
                     }
                 }
-                if ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].contains(&lower_ext.as_str()) {
+                if ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].contains(&lower_ext.as_str())
+                {
                     log::info!("Converting image to Base64...");
                     match std::fs::read(&save_path) {
                         Ok(bytes) => {
@@ -194,7 +202,7 @@ pub async fn cmd_get_preview(
                                 _ => "image/jpeg",
                             };
                             return Ok(format!("data:{};base64,{}", mime, b64));
-                        },
+                        }
                         Err(e) => {
                             log::error!("Failed to read file for base64: {}", e);
                             return Ok(save_path_str);
@@ -210,9 +218,7 @@ pub async fn cmd_get_preview(
 }
 
 #[tauri::command]
-pub async fn cmd_clean_cache(
-    app_handle: tauri::AppHandle,
-) -> Result<(), String> {
+pub async fn cmd_clean_cache(app_handle: tauri::AppHandle) -> Result<(), String> {
     let cache_dir = app_handle
         .path()
         .app_cache_dir()
@@ -273,8 +279,10 @@ pub async fn cmd_get_thumbnail(
     };
 
     let peer = resolve_peer(&client, folder_id, &state.peer_cache).await?;
-    let messages = client.get_messages_by_id(&peer, &[message_id])
-        .await.map_err(|e| e.to_string())?;
+    let messages = client
+        .get_messages_by_id(&peer, &[message_id])
+        .await
+        .map_err(|e| e.to_string())?;
     if let Some(m) = messages.into_iter().flatten().next() {
         if let Some(media) = m.media() {
             // Only get thumbnails for photos and documents with photo thumbnails
@@ -294,7 +302,7 @@ pub async fn cmd_get_thumbnail(
                         // Not an image, return empty - FileCard will show icon
                         return Ok("".to_string());
                     }
-                },
+                }
                 _ => return Ok("".to_string()),
             };
 

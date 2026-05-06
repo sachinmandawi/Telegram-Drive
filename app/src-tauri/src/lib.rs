@@ -1,15 +1,15 @@
 pub mod models;
 
-pub mod commands;
 pub mod bandwidth;
+pub mod commands;
 
+use commands::streaming::StreamConfig;
+use commands::TelegramState;
+use rand::Rng;
+use std::collections::HashMap;
+use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::Mutex;
-use std::sync::Arc;
-use std::collections::HashMap;
-use commands::TelegramState;
-use commands::streaming::StreamConfig;
-use rand::Rng;
 
 pub mod server;
 
@@ -62,7 +62,7 @@ pub fn run() {
             app.manage(bandwidth::BandwidthManager::new(app.handle()));
             app.manage(StreamConfig { token: stream_token.clone(), port: STREAM_PORT });
             app.manage(ActixServerHandle(server_handle_for_setup.clone()));
-            
+
             // Start Streaming Server on dedicated thread (Actix needs its own runtime)
             let state = Arc::new(app.state::<TelegramState>().inner().clone());
             let token_for_server = stream_token.clone();
@@ -85,7 +85,7 @@ pub fn run() {
                     }
                 });
             });
-            
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

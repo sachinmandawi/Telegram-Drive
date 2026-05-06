@@ -1,8 +1,8 @@
-use std::sync::Mutex;
+use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use chrono::Local;
+use std::sync::Mutex;
 use tauri::Manager;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -30,13 +30,16 @@ pub struct BandwidthManager {
 impl BandwidthManager {
     pub fn new(app_handle: &tauri::AppHandle) -> Self {
         // Resolve app data directory
-        let app_data_dir = app_handle.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("data"));
-        
+        let app_data_dir = app_handle
+            .path()
+            .app_data_dir()
+            .unwrap_or_else(|_| PathBuf::from("data"));
+
         if !app_data_dir.exists() {
-             let _ = std::fs::create_dir_all(&app_data_dir);
+            let _ = std::fs::create_dir_all(&app_data_dir);
         }
         let file_path = app_data_dir.join("bandwidth.json");
-        
+
         let stats = if file_path.exists() {
             let content = fs::read_to_string(&file_path).unwrap_or_default();
             serde_json::from_str(&content).unwrap_or_default()
@@ -84,7 +87,7 @@ impl BandwidthManager {
             log::warn!("Bandwidth stats lock is poisoned; upload bytes not recorded");
         }
     }
-    
+
     pub fn add_down(&self, bytes: u64) {
         self.check_and_reset();
         if let Ok(mut stats) = self.stats.lock() {
@@ -100,7 +103,7 @@ impl BandwidthManager {
             let _ = fs::write(&self.file_path, json);
         }
     }
-    
+
     pub fn get_stats(&self) -> BandwidthStats {
         self.check_and_reset();
         self.stats
@@ -108,5 +111,4 @@ impl BandwidthManager {
             .map(|stats| stats.clone())
             .unwrap_or_default()
     }
-
 }
