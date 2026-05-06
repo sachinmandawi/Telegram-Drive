@@ -1181,7 +1181,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.0.1-web',
+        appVersion: '1.0.2-web',
     });
 
     await client.connect();
@@ -1215,6 +1215,8 @@ function toTelegramFile(message: TelegramMessage, manifest?: DriveManifest): Tel
         created_at: record?.createdAt ? new Date(record.createdAt).toLocaleString() : formatTelegramDate(message.date),
         type: 'file',
         folderId: record?.folderId ?? null,
+        mime_type: record?.mimeType || message.file?.mimeType || undefined,
+        file_ext: getFilenameExtension(record?.name || getMessageFilename(message)),
         tags: record?.tags || [],
         starred: record?.starred || false,
         trashed: record?.trashed || false,
@@ -1236,6 +1238,11 @@ function getMessageFilename(message: TelegramMessage): string {
     if (mime.startsWith('video/')) return `Video-${message.id}.${mime.split('/')[1] || 'mp4'}`;
     if (mime.startsWith('audio/')) return `Audio-${message.id}.${mime.split('/')[1] || 'mp3'}`;
     return `Telegram-file-${message.id}`;
+}
+
+function getFilenameExtension(name: string): string | undefined {
+    const ext = name.split('.').pop();
+    return ext && ext !== name ? ext.toLowerCase() : undefined;
 }
 
 function formatTelegramDate(date?: number): string {

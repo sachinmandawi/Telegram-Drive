@@ -255,8 +255,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         setPreviewContextFiles(contextFiles);
         setPreviewContextIndex(contextIndex);
 
-        const isMedia = isMediaFile(file.name);
-        const isPdf = isPdfFile(file.name);
+        const isMedia = isMediaFile(file);
+        const isPdf = isPdfFile(file);
 
         if (isMedia) {
             setPlayingFile(file);
@@ -288,8 +288,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
         setPreviewContextIndex(nextIndex);
 
-        const isMedia = isMediaFile(nextFile.name);
-        const isPdf = isPdfFile(nextFile.name);
+        const isMedia = isMediaFile(nextFile);
+        const isPdf = isPdfFile(nextFile);
 
         if (isMedia) {
             setPlayingFile(nextFile);

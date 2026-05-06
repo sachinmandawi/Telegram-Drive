@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.2] - 2026-05-06
+
+### Preview Update
+
+- Fixed desktop EXE PDF preview in Saved Messages mode by loading local blob-backed documents as bytes instead of direct blob URLs.
+- Added broader inline previews for text, code, config, subtitle, JSON, CSV, TSV, and DOCX files.
+- Unified MIME and extension-aware preview routing across website and desktop builds.
+- Rebuilt website and desktop installers from the updated preview-safe codebase.
+
 ## [1.0.1] - 2026-05-06
 
 ### Fix Release

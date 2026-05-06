@@ -411,6 +411,8 @@ function toTelegramFile(record: WebFileRecord): TelegramFile {
         sizeStr: formatBytes(record.size),
         created_at: record.created_at,
         type: 'file',
+        mime_type: record.mime_type,
+        file_ext: record.file_ext,
     };
 }
 

@@ -4,6 +4,7 @@ import { Folder, Eye, Trash2, Star } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { FileTypeIcon } from '../FileTypeIcon';
 import { invokeCommand } from '../../platform';
+import { isImageFile } from '../../utils';
 
 interface FileCardProps {
     file: TelegramFile;
@@ -21,12 +22,6 @@ interface FileCardProps {
     onToggleSelection?: () => void;
 }
 
-// Check if file is an image type that can have a thumbnail
-function isImageFile(filename: string): boolean {
-    const ext = filename.split('.').pop()?.toLowerCase() || '';
-    return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext);
-}
-
 export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, onClick, onContextMenu, onDrop, onDragStart, onDragEnd, activeFolderId, height, onToggleSelection }: FileCardProps) {
     const isFolder = file.type === 'folder';
     const [isDragOver, setIsDragOver] = useState(false);
@@ -35,7 +30,7 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
 
     // Lazy load thumbnail for image files
     useEffect(() => {
-        if (isFolder || !isImageFile(file.name)) {
+        if (isFolder || !isImageFile(file)) {
             setThumbnail(null);
             setThumbnailLoading(false);
             return;
@@ -129,7 +124,7 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
                     <div className="absolute inset-0 flex items-center justify-center p-4">
                         {isFolder ? (
                             <Folder className="w-12 h-12 text-telegram-primary" />
-                        ) : thumbnailLoading && isImageFile(file.name) ? (
+                        ) : thumbnailLoading && isImageFile(file) ? (
                             <div className="w-8 h-8 border-2 border-telegram-primary/30 border-t-telegram-primary rounded-full animate-spin" />
                         ) : (
                             <FileTypeIcon filename={file.name} size="lg" />

@@ -60,8 +60,8 @@ export function MediaPlayer({ file, onClose, onNext, onPrev, currentIndex, total
         ? `${streamInfo.base_url}/stream/${folderIdParam}/${file.id}?token=${encodeURIComponent(streamInfo.token)}`
         : null);
 
-    const isVideo = isVideoFile(file.name);
-    const isAudio = isAudioFile(file.name);
+    const isVideo = isVideoFile(file);
+    const isAudio = isAudioFile(file);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {

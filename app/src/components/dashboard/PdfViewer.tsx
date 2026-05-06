@@ -79,46 +79,63 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
     // Load PDF document when stream URL is ready or file changes
     useEffect(() => {
         const folderIdParam = activeFolderId !== null ? activeFolderId.toString() : 'home';
-        const streamUrl = browserUrl || (streamInfo
+        const streamUrl = streamInfo
             ? `${streamInfo.base_url}/stream/${folderIdParam}/${file.id}?token=${encodeURIComponent(streamInfo.token)}`
-            : null);
+            : null;
+        const sourceUrl = browserUrl || streamUrl;
 
-        if (!streamUrl) return;
+        if (!sourceUrl) return;
 
         let cancelled = false;
+        let loadingTask: ReturnType<typeof pdfjsLib.getDocument> | null = null;
         setLoading(true);
         setError(null);
         setPdf(null);
         setNumPages(0);
 
-        const loadingTask = pdfjsLib.getDocument(streamUrl);
+        const loadPdf = async () => {
+            try {
+                if (browserUrl) {
+                    const response = await fetch(browserUrl);
+                    if (!response.ok) {
+                        throw new Error(`Failed to load PDF data (${response.status})`);
+                    }
+                    const data = new Uint8Array(await response.arrayBuffer());
+                    if (cancelled) return;
+                    loadingTask = pdfjsLib.getDocument({ data });
+                } else if (streamUrl) {
+                    loadingTask = pdfjsLib.getDocument(streamUrl);
+                }
 
-        loadingTask.promise.then(
-            (pdfDoc) => {
+                if (!loadingTask) return;
+
+                const pdfDoc = await loadingTask.promise;
                 if (cancelled) {
                     pdfDoc.destroy();
                     return;
                 }
-                // Destroy previous document if any
+
                 if (pdfRef.current) {
                     pdfRef.current.destroy();
                 }
+
                 pdfRef.current = pdfDoc;
                 setPdf(pdfDoc);
                 setNumPages(pdfDoc.numPages);
                 setLoading(false);
-            },
-            (err) => {
+            } catch (err) {
                 if (cancelled) return;
-                const message = err instanceof Error ? err.message : "Failed to load PDF document.";
+                const message = err instanceof Error ? err.message : 'Failed to load PDF document.';
                 setError(message);
                 setLoading(false);
             }
-        );
+        };
+
+        loadPdf();
 
         return () => {
             cancelled = true;
-            loadingTask.destroy();
+            loadingTask?.destroy();
         };
     }, [streamInfo, browserUrl, activeFolderId, file.id]);
 

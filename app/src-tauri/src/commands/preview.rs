@@ -8,6 +8,7 @@ use crate::commands::utils::resolve_peer;
 
 const PREVIEW_CACHE_MAX_FILES: usize = 30;
 const PREVIEW_CACHE_MAX_TOTAL_BYTES: u64 = 80 * 1024 * 1024;
+const TEXT_PREVIEW_MAX_BYTES: usize = 1024 * 1024;
 
 fn prune_preview_cache(cache_dir: &std::path::Path) {
     let read_dir = match std::fs::read_dir(cache_dir) {
@@ -35,6 +36,37 @@ fn prune_preview_cache(cache_dir: &std::path::Path) {
         } else {
             break;
         }
+    }
+}
+
+fn text_preview_mime(ext: &str, mime_hint: Option<&str>) -> Option<String> {
+    let lower_mime = mime_hint.unwrap_or("").to_ascii_lowercase();
+    if lower_mime.starts_with("text/") {
+        return Some(format!("{};charset=utf-8", lower_mime));
+    }
+
+    let normalized_ext = ext.to_ascii_lowercase();
+    let mapped = match normalized_ext.as_str() {
+        "txt" | "text" | "log" | "ini" | "cfg" | "conf" | "toml" | "yaml" | "yml"
+        | "md" | "markdown" | "csv" | "tsv" | "xml" | "html" | "htm"
+        | "css" | "scss" | "less" | "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs"
+        | "py" | "java" | "c" | "cpp" | "cc" | "h" | "hpp" | "cs" | "go"
+        | "rs" | "php" | "rb" | "sh" | "bash" | "zsh" | "ps1" | "bat"
+        | "cmd" | "sql" | "rtf" => "text/plain;charset=utf-8",
+        "json" | "jsonl" => "application/json;charset=utf-8",
+        _ => "",
+    };
+
+    if !mapped.is_empty() {
+        return Some(mapped.to_string());
+    }
+
+    match lower_mime.as_str() {
+        "application/json" | "application/ld+json" => Some("application/json;charset=utf-8".to_string()),
+        "application/xml" | "application/javascript" | "application/x-javascript" |
+        "application/sql" | "application/x-sh" | "application/x-httpd-php" |
+        "application/rtf" => Some(format!("{};charset=utf-8", lower_mime)),
+        _ => None,
     }
 }
 
@@ -69,6 +101,10 @@ pub async fn cmd_get_preview(
 
     if let Some(msg) = target_message {
         if let Some(media) = msg.media() {
+            let doc_mime = match &media {
+                Media::Document(d) => d.mime_type().map(|mime| mime.to_string()),
+                _ => None,
+            };
             let ext = match &media {
                 Media::Document(d) => {
                     let mut e = std::path::Path::new(d.name())
@@ -128,6 +164,22 @@ pub async fn cmd_get_preview(
             };
             if file_ready {
                 let lower_ext = ext.to_lowercase();
+                if let Some(mime) = text_preview_mime(&lower_ext, doc_mime.as_deref()) {
+                    match std::fs::read(&save_path) {
+                        Ok(bytes) => {
+                            let preview_bytes = if bytes.len() > TEXT_PREVIEW_MAX_BYTES {
+                                &bytes[..TEXT_PREVIEW_MAX_BYTES]
+                            } else {
+                                &bytes[..]
+                            };
+                            let b64 = general_purpose::STANDARD.encode(preview_bytes);
+                            return Ok(format!("data:{};base64,{}", mime, b64));
+                        },
+                        Err(e) => {
+                            log::error!("Failed to read text preview: {}", e);
+                        }
+                    }
+                }
                 if ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].contains(&lower_ext.as_str()) {
                     log::info!("Converting image to Base64...");
                     match std::fs::read(&save_path) {

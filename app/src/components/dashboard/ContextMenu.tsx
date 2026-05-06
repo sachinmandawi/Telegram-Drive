@@ -66,12 +66,12 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
 
             {file.type !== 'folder' && (
                 <button onClick={onPreview} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
-                    {isMediaFile(file.name) ? (
+                    {isMediaFile(file) ? (
                         <>
                             <Play className="w-4 h-4 text-telegram-primary" />
                             Play
                         </>
-                    ) : isPdfFile(file.name) ? (
+                    ) : isPdfFile(file) ? (
                         <>
                             <FileText className="w-4 h-4 text-red-400" />
                             View PDF

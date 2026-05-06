@@ -6,6 +6,8 @@ export interface TelegramFile {
     created_at?: string;
     type?: 'folder' | 'file'; // implied icon_type
     folderId?: number | null;
+    mime_type?: string;
+    file_ext?: string;
     tags?: string[];
     starred?: boolean;
     trashed?: boolean;
