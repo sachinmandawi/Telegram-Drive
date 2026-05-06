@@ -64,6 +64,9 @@ export const isTauriRuntime = () =>
 export const isSavedMessagesDefaultStorage = () =>
     (import.meta.env.VITE_DEFAULT_STORAGE || 'saved_messages') === 'saved_messages';
 
+export const getPublicAssetPath = (assetPath: string) =>
+    `${import.meta.env.BASE_URL || '/'}${assetPath.replace(/^\/+/, '')}`;
+
 export const telegramApiDefaults = () => ({
     apiId: import.meta.env.VITE_TELEGRAM_API_ID || '',
     apiHash: import.meta.env.VITE_TELEGRAM_API_HASH || '',

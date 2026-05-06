@@ -15,8 +15,10 @@ if (source.includes('Telegram Drive browser 2FA compatibility patch')) {
   process.exit(0);
 }
 
-const marker = 'function serializeBytes(bytes) {';
-const start = source.indexOf(marker);
+const headerMatch = source.match(/function serializeBytes\(([^)]+)\) \{/);
+const marker = headerMatch?.[0];
+const paramName = headerMatch?.[1] || 'data';
+const start = marker ? source.indexOf(marker) : -1;
 if (start === -1) {
   console.warn('[telegram-drive] Skipped GramJS patch: serializeBytes function not found.');
   process.exit(0);
@@ -28,23 +30,38 @@ if (nextFunction === -1) {
   process.exit(0);
 }
 
-const replacement = `function serializeBytes(bytes) {
+const replacement = `function serializeBytes(${paramName}) {
     // Telegram Drive browser 2FA compatibility patch.
-    if (bytes instanceof Uint8Array) {
-        bytes = Buffer.from(bytes);
+    let normalized = ${paramName};
+    if (normalized instanceof Uint8Array) {
+        normalized = Buffer.from(normalized);
     }
-    else if (bytes instanceof ArrayBuffer) {
-        bytes = Buffer.from(new Uint8Array(bytes));
+    else if (normalized instanceof ArrayBuffer) {
+        normalized = Buffer.from(new Uint8Array(normalized));
     }
-    else if (ArrayBuffer.isView(bytes)) {
-        bytes = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    else if (ArrayBuffer.isView(normalized)) {
+        normalized = Buffer.from(normalized.buffer, normalized.byteOffset, normalized.byteLength);
     }
-    else if (Array.isArray(bytes)) {
-        bytes = Buffer.from(bytes);
+    else if (Array.isArray(normalized)) {
+        normalized = Buffer.from(normalized);
     }
-    else if (bytes && typeof bytes === "object" && typeof bytes.length === "number" && typeof bytes !== "function") {
-        bytes = Buffer.from(bytes);
+    else if (normalized && typeof normalized === "object" && normalized.type === "Buffer" && Array.isArray(normalized.data)) {
+        normalized = Buffer.from(normalized.data);
     }
+    else if (normalized && typeof normalized === "object" && typeof normalized.toBuffer === "function") {
+        normalized = Buffer.from(normalized.toBuffer());
+    }
+    else if (normalized && typeof normalized === "object" && typeof normalized.toByteArray === "function") {
+        normalized = Buffer.from(normalized.toByteArray());
+    }
+    else if (normalized && typeof normalized === "object" && typeof normalized.toArray === "function") {
+        const converted = normalized.toArray();
+        normalized = Buffer.from(Array.isArray(converted) ? converted : converted.value || []);
+    }
+    else if (normalized && typeof normalized === "object" && typeof normalized.length === "number" && typeof normalized !== "function") {
+        normalized = Buffer.from(normalized);
+    }
+    ${paramName} = normalized;
 `;
 
 const patched = `${source.slice(0, start)}${replacement}${source.slice(start + marker.length, nextFunction)}${source.slice(nextFunction)}`;

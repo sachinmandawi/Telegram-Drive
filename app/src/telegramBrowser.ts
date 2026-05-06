@@ -157,15 +157,19 @@ export async function telegramCheckPassword(password: string): Promise<{ success
     if (!pending) throw new Error('No pending Telegram login. Request a code again.');
 
     const client = await getTelegramClient(pending.apiId, pending.apiHash);
-    await client.signInWithPassword(
-        { apiId: pending.apiId, apiHash: pending.apiHash },
-        {
-            password: async () => password,
-            onError: (err) => {
-                throw err;
-            },
-        }
-    );
+    const { Api } = await import('telegram');
+    const { computeCheck } = await import('telegram/Password');
+    const passwordState = await client.invoke(new Api.account.GetPassword());
+    const passwordCheck = await computeCheck(passwordState, password);
+    const normalizedPasswordCheck = new Api.InputCheckPasswordSRP({
+        srpId: passwordCheck.srpId,
+        A: await normalizeTelegramBytes(passwordCheck.A),
+        M1: await normalizeTelegramBytes(passwordCheck.M1),
+    });
+
+    await client.invoke(new Api.auth.CheckPassword({
+        password: normalizedPasswordCheck,
+    }));
 
     saveTelegramSession(client);
     clearPendingAuth();
@@ -1263,6 +1267,72 @@ function getTelegramErrorMessage(err: unknown): string {
 function saveTelegramSession(client: TelegramClientInstance) {
     const saved = client.session.save();
     localStorage.setItem(SESSION_KEY, String(saved));
+}
+
+async function normalizeTelegramBytes(value: unknown): Promise<Uint8Array> {
+    const { Buffer } = await import('buffer');
+
+    if (Buffer.isBuffer(value)) return value;
+    if (typeof value === 'string') return Buffer.from(value);
+    if (value instanceof Uint8Array) return Buffer.from(value);
+    if (value instanceof ArrayBuffer) return Buffer.from(new Uint8Array(value));
+    if (ArrayBuffer.isView(value)) {
+        return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    }
+    if (Array.isArray(value)) return Buffer.from(value);
+
+    if (value && typeof value === 'object') {
+        const record = value as {
+            buffer?: unknown;
+            byteLength?: unknown;
+            byteOffset?: unknown;
+            data?: unknown;
+            type?: unknown;
+            length?: unknown;
+            toArray?: (() => unknown) | unknown;
+            toBuffer?: (() => unknown) | unknown;
+            toByteArray?: (() => unknown) | unknown;
+        };
+
+        if (record.type === 'Buffer' && Array.isArray(record.data)) {
+            return Buffer.from(record.data);
+        }
+
+        if (typeof record.toBuffer === 'function') {
+            return await normalizeTelegramBytes(record.toBuffer());
+        }
+
+        if (typeof record.toByteArray === 'function') {
+            return await normalizeTelegramBytes(record.toByteArray());
+        }
+
+        if (typeof record.toArray === 'function') {
+            const next = record.toArray();
+            if (Array.isArray(next)) return Buffer.from(next);
+            if (next && typeof next === 'object' && 'value' in next) {
+                return await normalizeTelegramBytes((next as { value: unknown }).value);
+            }
+        }
+
+        if (record.buffer instanceof ArrayBuffer
+            && typeof record.byteOffset === 'number'
+            && typeof record.byteLength === 'number') {
+            return Buffer.from(record.buffer, record.byteOffset, record.byteLength);
+        }
+
+        if (typeof record.length === 'number') {
+            return Buffer.from(Array.from(value as ArrayLike<number>));
+        }
+    }
+
+    throw new Error(`Unsupported Telegram byte payload (${getObjectTypeName(value)})`);
+}
+
+function getObjectTypeName(value: unknown): string {
+    if (value === null) return 'null';
+    if (value === undefined) return 'undefined';
+    if (typeof value !== 'object') return typeof value;
+    return value.constructor?.name || 'object';
 }
 
 function readPendingAuth(): PendingAuth | null {

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Phone, Key, Lock, ArrowRight, Settings, ShieldCheck, Sun, Moon, HelpCircle, ExternalLink, X, Heart, Timer } from "lucide-react";
 import { useTheme } from '../context/ThemeContext';
-import { invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime, loadAppStore, openExternal, telegramApiDefaults } from '../platform';
+import { getPublicAssetPath, invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime, loadAppStore, openExternal, telegramApiDefaults } from '../platform';
 
 type Step = "setup" | "phone" | "code" | "password";
 
@@ -24,6 +24,7 @@ function AuthThemeToggle() {
 }
 export function AuthWizard({ onLogin }: { onLogin: () => void }) {
     const defaultCredentials = telegramApiDefaults();
+    const logoSrc = getPublicAssetPath('logo.svg');
     const [step, setStep] = useState<Step>("setup");
     const [loading, setLoading] = useState(false);
     const isDesktopRuntime = isTauriRuntime();
@@ -225,7 +226,7 @@ export function AuthWizard({ onLogin }: { onLogin: () => void }) {
             >
                 <div className="text-center mb-8">
                     <div className="w-20 h-20 mb-6 mx-auto flex items-center justify-center filter drop-shadow-lg">
-                        <img src="/logo.svg" alt="Logo" className="w-full h-full" />
+                        <img src={logoSrc} alt="Logo" className="w-full h-full" />
                     </div>
                     <h1 className="text-2xl font-bold text-white mb-1 tracking-tight">Telegram Drive</h1>
                     <p className="text-sm text-white/60 font-medium">Self-Hosted Secure Storage</p>

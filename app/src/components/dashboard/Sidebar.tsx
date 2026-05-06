@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { HardDrive, Folder, Plus, RefreshCw, LogOut, Star, Trash2 } from 'lucide-react';
 import { SidebarItem } from './SidebarItem';
 import { BandwidthWidget } from './BandwidthWidget';
+import { getPublicAssetPath } from '../../platform';
 import { TelegramFolder, BandwidthStats } from '../../types';
 
 interface SidebarProps {
@@ -27,6 +28,7 @@ export function Sidebar({
     isSyncing, isConnected, onSync, onLogout, bandwidth, connectionLabel, savedMessagesOnly = false,
     activeDriveView = 'files', onDriveViewChange
 }: SidebarProps) {
+    const logoSrc = getPublicAssetPath('logo.svg');
     const [showNewFolderInput, setShowNewFolderInput] = useState(false);
     const [newFolderName, setNewFolderName] = useState("");
 
@@ -46,7 +48,7 @@ export function Sidebar({
     return (
         <aside className="w-64 bg-telegram-surface border-r border-telegram-border flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="p-4 flex items-center gap-2">
-                <img src="/logo.svg" className="w-8 h-8 drop-shadow-lg" alt="Logo" />
+                <img src={logoSrc} className="w-8 h-8 drop-shadow-lg" alt="Logo" />
                 <span className="font-bold text-lg text-telegram-text tracking-tight">Telegram Drive</span>
             </div>
 
