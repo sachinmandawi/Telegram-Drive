@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
-import { Folder, Eye, Trash2, Star } from 'lucide-react';
+import { Folder, Eye, Trash2, Star, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { FileTypeIcon } from '../FileTypeIcon';
 import { invokeCommand } from '../../platform';
@@ -151,10 +151,31 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
                     </div>
                 )}
 
+                {!isFolder && file.integrityStatus === 'valid' && (
+                    <div className="absolute top-2 left-16 w-5 h-5 rounded-full bg-black/40 flex items-center justify-center z-10">
+                        <ShieldCheck className="w-3 h-3 text-green-400" />
+                    </div>
+                )}
+
+                {!isFolder && file.integrityStatus === 'mismatch' && (
+                    <div className="absolute top-2 left-16 w-5 h-5 rounded-full bg-black/40 flex items-center justify-center z-10">
+                        <ShieldAlert className="w-3 h-3 text-red-400" />
+                    </div>
+                )}
+
                 {/* File info overlay at bottom */}
                 <div className={`absolute bottom-0 left-0 right-0 p-3 ${thumbnail ? 'text-white' : 'text-telegram-text'}`}>
                     <h3 className="text-sm font-medium truncate w-full" title={file.name}>{file.name}</h3>
                     <p className={`text-xs mt-0.5 ${thumbnail ? 'text-white/70' : 'text-telegram-subtext'}`}>{file.sizeStr}</p>
+                    {!isFolder && file.tags && file.tags.length > 0 && (
+                        <div className="mt-1 flex max-h-5 gap-1 overflow-hidden">
+                            {file.tags.slice(0, 3).map((tag) => (
+                                <span key={tag} className="rounded bg-black/30 px-1.5 py-0.5 text-[10px] text-white/80">
+                                    {tag}
+                                </span>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Quick actions on hover */}

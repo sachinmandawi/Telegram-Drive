@@ -18,7 +18,16 @@ Telegram Drive leverages the Telegram API to allow you to upload, organize, and 
 *   **Browser-Only Saved Messages Mode**: Run the drive from the local website or desktop app while storing files in Telegram Saved Messages.
 *   **Persistent Cloud Manifest**: Folder structure, starred files, trash state, and metadata are saved back to Telegram so reinstalling the exe does not erase your drive index.
 *   **Repair & Recovery**: Rebuild the local index from Telegram Saved Messages and keep recent manifest snapshots for recovery.
+*   **Drive Tools Dashboard**: View storage analytics, type breakdowns, cache status, backup controls, trash cleanup, account switching, and update checks in one place.
+*   **Smart Search & Tags**: Search names, extensions, MIME types, tags, checksums, and indexed text with richer filters.
+*   **Gallery & Media Views**: Jump straight into image, audio, and video collections without digging through folders.
+*   **Watch Folder Sync**: Select a local folder in supported browsers and queue changed files automatically.
+*   **Offline Cache**: Recently downloaded Telegram files are cached locally for faster repeat opens.
+*   **Integrity Checks**: Upload checksums are stored, downloads can be verified, and mismatches are flagged in the UI.
+*   **OCR & Preview Search**: Images can be OCR indexed, and text-like previews support quick in-file search.
 *   **Trash & Restore**: Delete safely with recoverable trash, then permanently delete only when needed.
+*   **Retryable Queues**: Failed or cancelled uploads/downloads can be retried without rebuilding the queue.
+*   **Multi-Account Sessions**: Keep separate Telegram account manifests and switch accounts from Drive Tools.
 *   **High Performance Grid**: Virtual scrolling handles folders with thousands of files instantly.
 *   **Auto-Updates**: Seamless updates for Windows, macOS, and Linux.
 *   **Media Streaming**: Stream video and audio files directly without downloading.
@@ -53,7 +62,7 @@ Telegram Drive leverages the Telegram API to allow you to upload, organize, and 
 
 ##  Tech Stack
 
-*   **Frontend**: React, TypeScript, TailwindCSS, Framer Motion
+*   **Frontend**: React, TypeScript, TailwindCSS, Framer Motion, Tesseract.js
 *   **Backend**: Rust (Tauri), Grammers (Telegram Client)
 *   **Build Tool**: Vite
 

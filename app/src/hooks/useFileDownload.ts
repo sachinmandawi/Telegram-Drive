@@ -35,7 +35,8 @@ export function useFileDownload(store: AppStore | null) {
         }
         store.get<DownloadItem[]>('downloadQueue').then((saved) => {
             if (saved && saved.length > 0) {
-                const pending = saved.filter(i => i.status === 'pending');
+                const pending = saved.filter(i => i.status === 'pending' || i.status === 'error' || i.status === 'cancelled')
+                    .map((item) => item.status === 'pending' ? item : { ...item, status: 'pending' as const, error: undefined, progress: 0 });
                 if (pending.length > 0) {
                     setDownloadQueue(pending);
                     toast.info(`Restored ${pending.length} pending downloads`);
@@ -48,7 +49,7 @@ export function useFileDownload(store: AppStore | null) {
     // Save queue when it changes (only pending items)
     useEffect(() => {
         if (!store || !initialized || !useDesktopFileDialog) return;
-        const pending = downloadQueue.filter(i => i.status === 'pending');
+        const pending = downloadQueue.filter(i => i.status === 'pending' || i.status === 'error' || i.status === 'cancelled');
         store.set('downloadQueue', pending).then(() => store.save());
     }, [store, downloadQueue, initialized, useDesktopFileDialog]);
 
@@ -63,11 +64,11 @@ export function useFileDownload(store: AppStore | null) {
 
     const processItem = async (item: DownloadItem) => {
         setProcessing(true);
-        setDownloadQueue(q => q.map(i => i.id === item.id ? { ...i, status: 'downloading', progress: 0 } : i));
+        setDownloadQueue(q => q.map(i => i.id === item.id ? { ...i, status: 'downloading', progress: 0, attempts: (i.attempts || 0) + 1 } : i));
 
         try {
             if (useDesktopFileDialog) {
-                const savePath = await saveTauriFileDialog(item.filename);
+                const savePath = item.destinationPath || await saveTauriFileDialog(item.filename);
                 if (!savePath) {
                     setDownloadQueue(q => q.filter(i => i.id !== item.id));
                     setProcessing(false);
@@ -149,11 +150,21 @@ export function useFileDownload(store: AppStore | null) {
         toast.info('All downloads cancelled');
     };
 
+    const retryFailed = () => {
+        setDownloadQueue(q => q.map(i => (
+            i.status === 'error' || i.status === 'cancelled'
+                ? { ...i, status: 'pending' as const, error: undefined, progress: 0 }
+                : i
+        )));
+        toast.info('Failed downloads queued again');
+    };
+
     return {
         downloadQueue,
         queueDownload,
         queueBulkDownload,
         clearFinished,
-        cancelAll
+        cancelAll,
+        retryFailed
     };
 }

@@ -31,6 +31,8 @@ interface FileExplorerProps {
     onDragEnd?: () => void;
     onToggleStar?: (file: TelegramFile) => void;
     onRestore?: (file: TelegramFile) => void;
+    onEditTags?: (file: TelegramFile) => void;
+    onVerify?: (file: TelegramFile) => void;
 }
 
 
@@ -62,7 +64,7 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
 
 export function FileExplorer({
     files, loading, error, viewMode, selectedIds, activeFolderId,
-    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onToggleStar, onRestore
+    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onToggleStar, onRestore, onEditTags, onVerify
 }: FileExplorerProps) {
     const [sortField, setSortField] = useState<SortField>('name');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -387,6 +389,14 @@ export function FileExplorer({
                     } : undefined}
                     onRestore={onRestore && contextMenu.file.trashed ? () => {
                         onRestore(contextMenu.file);
+                        setContextMenu(null);
+                    } : undefined}
+                    onEditTags={onEditTags ? () => {
+                        onEditTags(contextMenu.file);
+                        setContextMenu(null);
+                    } : undefined}
+                    onVerify={onVerify ? () => {
+                        onVerify(contextMenu.file);
                         setContextMenu(null);
                     } : undefined}
                 />

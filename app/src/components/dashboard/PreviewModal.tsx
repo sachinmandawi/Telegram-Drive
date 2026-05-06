@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, File, FileText, Table2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, File, FileText, ScanText, Search, Table2, X } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import {
     getFileExtension,
@@ -109,6 +109,9 @@ export function PreviewModal({
     const [reloadNonce, setReloadNonce] = useState(0);
     const [retryCount, setRetryCount] = useState(0);
     const [isPreviewTruncated, setIsPreviewTruncated] = useState(false);
+    const [previewSearchTerm, setPreviewSearchTerm] = useState('');
+    const [ocrText, setOcrText] = useState('');
+    const [ocrLoading, setOcrLoading] = useState(false);
     const latestRequestRef = useRef(0);
 
     const imagePreview = isImageFile(file);
@@ -124,6 +127,8 @@ export function PreviewModal({
         setHtmlContent(null);
         setSheetPreview(null);
         setIsPreviewTruncated(false);
+        setPreviewSearchTerm('');
+        setOcrText('');
     }, [file.id, activeFolderId]);
 
     useEffect(() => {
@@ -232,6 +237,47 @@ export function PreviewModal({
     }, [nextFile, prevFile, activeFolderId]);
 
     useEffect(() => {
+        const content = textContent
+            || stripHtml(htmlContent || '')
+            || flattenSpreadsheetPreview(sheetPreview)
+            || '';
+        if (!content.trim()) return;
+        invokeCommand('cmd_index_file_text', {
+            messageId: file.id,
+            text: content,
+            source: 'preview',
+        }).catch(() => undefined);
+    }, [file.id, htmlContent, sheetPreview, textContent]);
+
+    const runOcr = async () => {
+        if (!src) return;
+        setOcrLoading(true);
+        setOcrText('');
+        try {
+            const { recognize } = await import('tesseract.js');
+            const result = await recognize(src, 'eng');
+            const text = result.data.text.trim();
+            setOcrText(text || 'No readable text found.');
+            if (text) {
+                await invokeCommand('cmd_index_file_text', {
+                    messageId: file.id,
+                    text,
+                    source: 'ocr',
+                });
+            }
+        } catch (error) {
+            setOcrText(formatPreviewError(error));
+        } finally {
+            setOcrLoading(false);
+        }
+    };
+
+    const searchableText = textContent || stripHtml(htmlContent || '') || flattenSpreadsheetPreview(sheetPreview) || ocrText;
+    const searchMatchCount = previewSearchTerm.trim()
+        ? countMatches(searchableText, previewSearchTerm.trim())
+        : 0;
+
+    useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement;
             if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
@@ -309,32 +355,54 @@ export function PreviewModal({
                 {!loading && !error && src && (
                     <div className="flex w-full flex-col items-center">
                         {imagePreview ? (
-                            <img
-                                src={src}
-                                className="max-h-[85vh] max-w-full rounded-lg bg-black object-contain shadow-2xl"
-                                alt="Preview"
-                                onError={() => {
-                                    const key = getPreviewCacheKey(file.id, activeFolderId);
-                                    forgetPreview(key);
+                            <div className="flex max-h-[85vh] w-full items-start justify-center gap-4">
+                                <div className="flex flex-col items-center gap-3">
+                                    <img
+                                        src={src}
+                                        className="max-h-[78vh] max-w-full rounded-lg bg-black object-contain shadow-2xl"
+                                        alt="Preview"
+                                        onError={() => {
+                                            const key = getPreviewCacheKey(file.id, activeFolderId);
+                                            forgetPreview(key);
 
-                                    if (retryCount < 1) {
-                                        setRetryCount((prev) => prev + 1);
-                                        setReloadNonce((prev) => prev + 1);
-                                        return;
-                                    }
+                                            if (retryCount < 1) {
+                                                setRetryCount((prev) => prev + 1);
+                                                setReloadNonce((prev) => prev + 1);
+                                                return;
+                                            }
 
-                                    setError('Failed to render image preview');
-                                }}
-                            />
+                                            setError('Failed to render image preview');
+                                        }}
+                                    />
+                                    <button
+                                        onClick={runOcr}
+                                        disabled={ocrLoading}
+                                        className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20 disabled:opacity-60"
+                                    >
+                                        <ScanText className="h-4 w-4" />
+                                        {ocrLoading ? 'Reading Text...' : 'OCR Text'}
+                                    </button>
+                                </div>
+                                {(ocrText || ocrLoading) && (
+                                    <div className="custom-scrollbar max-h-[78vh] w-full max-w-sm overflow-auto rounded-xl border border-white/10 bg-[#0b1220] p-4 text-sm leading-6 text-slate-100 shadow-2xl">
+                                        <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/60">
+                                            <ScanText className="h-4 w-4" />
+                                            OCR
+                                        </div>
+                                        {ocrLoading ? 'Extracting image text...' : ocrText}
+                                    </div>
+                                )}
+                            </div>
                         ) : textPreview && textContent !== null ? (
                             <div className="w-full max-w-6xl overflow-hidden rounded-xl border border-white/10 bg-[#0b1220] shadow-2xl">
                                 <PreviewHeader
                                     icon={<FileText className="h-4 w-4" />}
                                     label={getTextPreviewLabel(file)}
                                     hint={isPreviewTruncated ? 'Preview trimmed for speed' : undefined}
+                                    extra={<PreviewSearch value={previewSearchTerm} onChange={setPreviewSearchTerm} matches={searchMatchCount} />}
                                 />
                                 <pre className="custom-scrollbar max-h-[calc(85vh-3rem)] overflow-auto whitespace-pre-wrap break-words px-5 py-4 font-mono text-sm leading-6 text-slate-100">
-                                    {textContent}
+                                    {renderHighlightedText(textContent, previewSearchTerm)}
                                 </pre>
                             </div>
                         ) : docxPreview && htmlContent !== null ? (
@@ -343,6 +411,7 @@ export function PreviewModal({
                                     icon={<FileText className="h-4 w-4" />}
                                     label="Document preview"
                                     hint={isPreviewTruncated ? 'Some large sections may be condensed' : undefined}
+                                    extra={<PreviewSearch value={previewSearchTerm} onChange={setPreviewSearchTerm} matches={searchMatchCount} />}
                                 />
                                 <div className="custom-scrollbar max-h-[calc(85vh-3rem)] overflow-auto px-6 py-5 text-sm leading-7 text-slate-100">
                                     <div
@@ -357,6 +426,7 @@ export function PreviewModal({
                                     icon={<Table2 className="h-4 w-4" />}
                                     label="Spreadsheet preview"
                                     hint={sheetPreview.truncated ? 'Large sheets were trimmed for fast preview' : undefined}
+                                    extra={<PreviewSearch value={previewSearchTerm} onChange={setPreviewSearchTerm} matches={searchMatchCount} />}
                                 />
                                 <div className="custom-scrollbar max-h-[calc(85vh-3rem)] overflow-auto px-4 py-4">
                                     <div className="flex flex-col gap-6">
@@ -422,15 +492,34 @@ export function PreviewModal({
     );
 }
 
-function PreviewHeader({ icon, label, hint }: { icon: ReactNode; label: string; hint?: string }) {
+function PreviewHeader({ icon, label, hint, extra }: { icon: ReactNode; label: string; hint?: string; extra?: ReactNode }) {
     return (
         <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3 text-xs text-white/60">
             <span className="flex items-center gap-2 uppercase tracking-[0.18em]">
                 {icon}
                 {label}
             </span>
-            {hint && <span>{hint}</span>}
+            <span className="flex min-w-0 items-center gap-3">
+                {extra}
+                {hint && <span>{hint}</span>}
+            </span>
         </div>
+    );
+}
+
+function PreviewSearch({ value, onChange, matches }: { value: string; onChange: (value: string) => void; matches: number }) {
+    return (
+        <label className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 py-1 normal-case tracking-normal">
+            <Search className="h-3.5 w-3.5" />
+            <input
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                className="w-32 bg-transparent text-xs text-white outline-none placeholder:text-white/40"
+                placeholder="Search preview"
+                onClick={(event) => event.stopPropagation()}
+            />
+            {value.trim() && <span className="text-[10px] text-white/40">{matches}</span>}
+        </label>
     );
 }
 
@@ -513,6 +602,54 @@ function formatPreviewText(text: string): string {
     } catch {
         return trimmed;
     }
+}
+
+function renderHighlightedText(text: string, query: string): ReactNode {
+    const needle = query.trim();
+    if (!needle) return text;
+
+    const lowerText = text.toLowerCase();
+    const lowerNeedle = needle.toLowerCase();
+    const parts: ReactNode[] = [];
+    let cursor = 0;
+    let index = lowerText.indexOf(lowerNeedle);
+
+    while (index !== -1) {
+        if (index > cursor) parts.push(text.slice(cursor, index));
+        parts.push(
+            <mark key={`${index}:${needle}`} className="rounded bg-yellow-300/80 px-0.5 text-black">
+                {text.slice(index, index + needle.length)}
+            </mark>
+        );
+        cursor = index + needle.length;
+        index = lowerText.indexOf(lowerNeedle, cursor);
+    }
+
+    if (cursor < text.length) parts.push(text.slice(cursor));
+    return parts;
+}
+
+function countMatches(text: string, query: string): number {
+    if (!text || !query) return 0;
+    const matches = text.toLowerCase().match(new RegExp(escapeRegExp(query.toLowerCase()), 'g'));
+    return matches?.length || 0;
+}
+
+function escapeRegExp(input: string): string {
+    return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripHtml(html: string): string {
+    if (!html) return '';
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    return doc.body.textContent || '';
+}
+
+function flattenSpreadsheetPreview(preview: SpreadsheetPreview | null): string {
+    if (!preview) return '';
+    return preview.sheets
+        .flatMap((sheet) => sheet.rows.flatMap((row) => row))
+        .join(' ');
 }
 
 function sanitizePreviewHtml(html: string): string {

@@ -17,7 +17,13 @@ export interface TelegramFile {
     version?: number;
     versionGroup?: string;
     duplicateOf?: number;
+    textIndexedAt?: string;
+    ocrIndexedAt?: string;
+    checksumVerifiedAt?: string;
+    integrityStatus?: 'unknown' | 'valid' | 'mismatch';
 }
+
+export type DriveView = 'files' | 'starred' | 'trash' | 'gallery' | 'media';
 
 export interface TelegramFolder {
     id: number;
@@ -33,6 +39,7 @@ export interface QueueItem {
     status: 'pending' | 'uploading' | 'success' | 'error' | 'cancelled';
     error?: string;
     progress?: number; // 0-100
+    attempts?: number;
 }
 
 export interface BandwidthStats {
@@ -48,4 +55,61 @@ export interface DownloadItem {
     status: 'pending' | 'downloading' | 'success' | 'error' | 'cancelled';
     error?: string;
     progress?: number; // 0-100
+    destinationPath?: string;
+    attempts?: number;
+}
+
+export interface DriveTypeBreakdown {
+    label: string;
+    count: number;
+    bytes: number;
+}
+
+export interface DriveStats {
+    totalFiles: number;
+    activeFiles: number;
+    trashedFiles: number;
+    starredFiles: number;
+    duplicateFiles: number;
+    missingFiles: number;
+    totalBytes: number;
+    activeBytes: number;
+    trashedBytes: number;
+    indexedTextFiles: number;
+    verifiedFiles: number;
+    checksumMismatches: number;
+    folders: number;
+    backups: number;
+    trashRetentionDays: number;
+    largestFiles: TelegramFile[];
+    types: DriveTypeBreakdown[];
+    updatedAt: string;
+}
+
+export interface ManifestBackupInfo {
+    at: string;
+    messageId?: number;
+    size?: number;
+}
+
+export interface OfflineCacheStats {
+    items: number;
+    bytes: number;
+    maxItems: number;
+    maxBytes: number;
+}
+
+export interface IntegrityResult {
+    messageId: number;
+    checksum?: string;
+    expectedChecksum?: string;
+    valid: boolean;
+}
+
+export interface TelegramAccountInfo {
+    id: string;
+    label: string;
+    apiId?: number;
+    lastUsedAt: string;
+    active: boolean;
 }

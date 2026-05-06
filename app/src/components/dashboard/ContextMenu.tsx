@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, Star, RotateCcw } from 'lucide-react';
+import { Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, Star, RotateCcw, Tag, ShieldCheck } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { isMediaFile, isPdfFile } from '../../utils';
 
@@ -13,9 +13,11 @@ interface ContextMenuProps {
     onPreview: () => void;
     onToggleStar?: () => void;
     onRestore?: () => void;
+    onEditTags?: () => void;
+    onVerify?: () => void;
 }
 
-export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onToggleStar, onRestore }: ContextMenuProps) {
+export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onToggleStar, onRestore, onEditTags, onVerify }: ContextMenuProps) {
     const [adjustedPos, setAdjustedPos] = useState({ x, y });
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -103,6 +105,20 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
                 <button onClick={onToggleStar} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
                     <Star className={`w-4 h-4 ${file.starred ? 'text-yellow-400 fill-yellow-400' : 'text-yellow-400'}`} />
                     {file.starred ? 'Unstar' : 'Star'}
+                </button>
+            )}
+
+            {file.type !== 'folder' && onEditTags && (
+                <button onClick={onEditTags} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
+                    <Tag className="w-4 h-4 text-telegram-primary" />
+                    Tags
+                </button>
+            )}
+
+            {file.type !== 'folder' && onVerify && (
+                <button onClick={onVerify} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
+                    <ShieldCheck className="w-4 h-4 text-green-400" />
+                    Verify Checksum
                 </button>
             )}
 

@@ -44,7 +44,8 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
         }
         store.get<QueueItem[]>('uploadQueue').then((saved) => {
             if (saved && saved.length > 0) {
-                const pending = saved.filter(i => i.status === 'pending');
+                const pending = saved.filter(i => i.status === 'pending' || i.status === 'error' || i.status === 'cancelled')
+                    .map((item) => item.status === 'pending' ? item : { ...item, status: 'pending' as const, error: undefined, progress: 0 });
                 if (pending.length > 0) {
                     setUploadQueue(pending);
                     toast.info(`Restored ${pending.length} pending uploads`);
@@ -56,7 +57,7 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
 
     useEffect(() => {
         if (!store || !initialized || !useDesktopFileDialog) return;
-        const pending = uploadQueue.filter(i => i.status === 'pending');
+        const pending = uploadQueue.filter(i => i.status === 'pending' || i.status === 'error' || i.status === 'cancelled');
         store.set('uploadQueue', pending).then(() => store.save());
     }, [store, uploadQueue, initialized, useDesktopFileDialog]);
 
@@ -81,7 +82,7 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
 
     const processItem = async (item: QueueItem) => {
         setProcessing(true);
-        setUploadQueue(q => q.map(i => i.id === item.id ? { ...i, status: 'uploading', progress: 0 } : i));
+        setUploadQueue(q => q.map(i => i.id === item.id ? { ...i, status: 'uploading', progress: 0, attempts: (i.attempts || 0) + 1 } : i));
         try {
             if (useDesktopFileDialog) {
                 await invokeCommand('cmd_upload_file', { path: item.path, folderId: item.folderId, transferId: item.id });
@@ -171,6 +172,15 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
         toast.info('All uploads cancelled');
     };
 
+    const retryFailed = () => {
+        setUploadQueue(q => q.map(i => (
+            i.status === 'error' || i.status === 'cancelled'
+                ? { ...i, status: 'pending' as const, error: undefined, progress: 0 }
+                : i
+        )));
+        toast.info('Failed uploads queued again');
+    };
+
     const { isDragging } = useFileDrop();
 
     return {
@@ -181,6 +191,7 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
         queueFiles,
         queueFileEntries,
         cancelAll,
+        retryFailed,
         isDragging
     };
 }

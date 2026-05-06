@@ -4,18 +4,23 @@ interface UploadQueueProps {
     items: QueueItem[];
     onClearFinished: () => void;
     onCancelAll: () => void;
+    onRetryFailed: () => void;
 }
 
-export function UploadQueue({ items, onClearFinished, onCancelAll }: UploadQueueProps) {
+export function UploadQueue({ items, onClearFinished, onCancelAll, onRetryFailed }: UploadQueueProps) {
     if (items.length === 0) return null;
 
     const hasPendingOrActive = items.some(i => i.status === 'pending' || i.status === 'uploading');
+    const hasFailed = items.some(i => i.status === 'error' || i.status === 'cancelled');
 
     return (
         <div className="fixed bottom-4 right-4 w-80 bg-telegram-surface border border-telegram-border rounded-xl shadow-2xl overflow-hidden z-[100]">
             <div className="p-3 border-b border-telegram-border bg-telegram-hover flex justify-between items-center">
                 <h4 className="text-sm font-medium text-telegram-text">Uploads</h4>
                 <div className="flex gap-2">
+                    {hasFailed && (
+                        <button onClick={onRetryFailed} className="text-xs text-telegram-primary hover:text-telegram-text transition-colors">Retry Failed</button>
+                    )}
                     {hasPendingOrActive && (
                         <button onClick={onCancelAll} className="text-xs text-red-400 hover:text-red-300 transition-colors">Cancel All</button>
                     )}

@@ -1,5 +1,12 @@
-import type { TelegramFile, TelegramFolder } from './types';
-import { formatBytes } from './utils';
+import type {
+    DriveStats,
+    IntegrityResult,
+    OfflineCacheStats,
+    TelegramAccountInfo,
+    TelegramFile,
+    TelegramFolder,
+} from './types';
+import { formatBytes, isAudioFile, isImageFile, isMediaFile, isPdfFile, isTextPreviewFile, isVideoFile } from './utils';
 
 type TelegramClientInstance = import('telegram').TelegramClient;
 type TelegramMessage = import('telegram/tl').Api.Message;
@@ -19,6 +26,14 @@ const FOLDER_MAP_KEY = 'telegram-drive-telegram-folder-map';
 const NEXT_FOLDER_ID_KEY = 'telegram-drive-next-virtual-folder-id';
 const MANIFEST_CACHE_KEY = 'telegram-drive-telegram-manifest-cache';
 const DRIVE_ID_KEY = 'telegram-drive-persistent-drive-id';
+const ACTIVE_ACCOUNT_KEY = 'telegram-drive-active-account';
+const ACCOUNT_REGISTRY_KEY = 'telegram-drive-account-registry';
+const OFFLINE_CACHE_DB_NAME = 'telegram-drive-offline-cache';
+const OFFLINE_CACHE_DB_VERSION = 1;
+const OFFLINE_CACHE_STORE = 'blobs';
+const OFFLINE_CACHE_INDEX_KEY = 'telegram-drive-offline-cache-index';
+const OFFLINE_CACHE_MAX_ITEMS = 80;
+const OFFLINE_CACHE_MAX_BYTES = 512 * 1024 * 1024;
 const MANIFEST_MARKER = '[telegram-drive-manifest-v1]';
 const MANIFEST_FILENAME = '.telegram-drive-manifest.json';
 const MANIFEST_BACKUP_COUNT = 5;
@@ -36,8 +51,14 @@ type DriveEventType =
     | 'file_restored'
     | 'file_starred'
     | 'file_tagged'
+    | 'file_verified'
+    | 'text_indexed'
     | 'duplicate_detected'
-    | 'manifest_repaired';
+    | 'manifest_repaired'
+    | 'manifest_imported'
+    | 'trash_cleaned'
+    | 'account_switched'
+    | 'cache_cleared';
 
 type DriveFileRecord = {
     messageId: number;
@@ -57,6 +78,12 @@ type DriveFileRecord = {
     versionGroup?: string;
     version?: number;
     duplicateOf?: number;
+    textIndex?: string;
+    textIndexedAt?: string;
+    ocrText?: string;
+    ocrIndexedAt?: string;
+    checksumVerifiedAt?: string;
+    integrityStatus?: 'unknown' | 'valid' | 'mismatch';
 };
 
 type DriveEvent = {
@@ -75,6 +102,23 @@ type DriveManifestBackup = {
     at: string;
     messageId?: number;
     size?: number;
+};
+
+type StoredAccount = {
+    id: string;
+    label: string;
+    apiId?: number;
+    lastUsedAt: string;
+};
+
+type OfflineCacheIndexEntry = {
+    messageId: number;
+    name: string;
+    bytes: number;
+    mimeType?: string;
+    checksum?: string;
+    updatedAt: string;
+    lastAccessedAt: string;
 };
 
 type DriveManifest = {
@@ -98,6 +142,18 @@ let pendingRemoteManifest: DriveManifest | null = null;
 let remoteManifestTimer: ReturnType<typeof setTimeout> | null = null;
 let remoteManifestWrite: Promise<void> = Promise.resolve();
 let nextTelegramUploadAt = 0;
+
+function getActiveAccountId(): string {
+    return localStorage.getItem(ACTIVE_ACCOUNT_KEY) || 'default';
+}
+
+function scopedKey(key: string, accountId = getActiveAccountId()): string {
+    return `${key}:${accountId}`;
+}
+
+function getCurrentSessionKey(): string {
+    return scopedKey(SESSION_KEY);
+}
 
 export async function telegramConnect(apiId?: number): Promise<boolean> {
     const client = await getTelegramClient(apiId);
@@ -140,7 +196,7 @@ export async function telegramSignIn(code: string): Promise<{ success: boolean; 
             throw new Error('This phone number is not registered on Telegram.');
         }
 
-        saveTelegramSession(client);
+        saveTelegramSession(client, pending);
         clearPendingAuth();
         markAuthComplete();
         return { success: true, next_step: 'dashboard' };
@@ -171,7 +227,7 @@ export async function telegramCheckPassword(password: string): Promise<{ success
         password: normalizedPasswordCheck,
     }));
 
-    saveTelegramSession(client);
+    saveTelegramSession(client, pending);
     clearPendingAuth();
     markAuthComplete();
     return { success: true, next_step: 'dashboard' };
@@ -191,7 +247,11 @@ export async function telegramLogout(): Promise<boolean> {
 
     clientPromise = null;
     clientCredentials = null;
-    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(getCurrentSessionKey());
+    if (getActiveAccountId() === 'default') {
+        localStorage.removeItem(SESSION_KEY);
+    }
+    manifestCache = null;
     clearPendingAuth();
     writeConfig({ apiId: undefined, apiHash: undefined, authComplete: false });
     return true;
@@ -287,6 +347,36 @@ export async function telegramGetFiles(folderId: number | null | undefined = nul
     }
 
     return files;
+}
+
+export async function telegramSearchFiles(query: string): Promise<TelegramFile[]> {
+    const client = await authorizedTelegramClient();
+    const manifest = await getDriveManifest();
+    const messages = await getSavedMessages(client);
+    const byMessageId = new Map<number, TelegramMessage>();
+    let indexed = 0;
+
+    for (const message of messages) {
+        if (!message?.media || !message.file || isDriveManifestMessage(message)) continue;
+        byMessageId.set(message.id, message);
+        const wasIndexed = Boolean(manifest.files[String(message.id)]);
+        ensureManifestFileRecord(manifest, message);
+        if (!wasIndexed) indexed++;
+    }
+
+    if (indexed > 0) {
+        appendManifestEvent(manifest, 'manifest_repaired', { source: 'smart_search_index', indexed });
+        await saveDriveManifest(manifest, 'debounced');
+    }
+
+    const filters = parseSmartSearchQuery(query);
+    return Object.values(manifest.files)
+        .filter((record) => matchesSmartSearch(record, filters))
+        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
+        .map((record) => {
+            const message = byMessageId.get(record.messageId);
+            return message ? toTelegramFile(message, manifest) : recordToTelegramFile(record);
+        });
 }
 
 export async function telegramGetStarredFiles(query?: string): Promise<TelegramFile[]> {
@@ -392,6 +482,8 @@ export async function telegramUploadFile(
         ? Math.max(...duplicates.map((record) => record.version || 1)) + 1
         : 1;
     const updatedAt = new Date().toISOString();
+    const checksum = await sha256Blob(file);
+    const originalPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
 
     for (const duplicate of duplicates) {
         if (!duplicate.versionGroup) duplicate.versionGroup = versionGroup;
@@ -422,6 +514,9 @@ export async function telegramUploadFile(
         createdAt: updatedAt,
         updatedAt,
         mimeType: file.type || message.file?.mimeType || undefined,
+        checksum,
+        originalPath,
+        integrityStatus: 'unknown',
         versionGroup: duplicates.length > 0 ? versionGroup : undefined,
         version: duplicates.length > 0 ? nextVersion : undefined,
         duplicateOf: duplicates[0]?.messageId,
@@ -431,6 +526,7 @@ export async function telegramUploadFile(
         folderId,
         name: file.name,
         size: file.size,
+        checksum,
         version: duplicates.length > 0 ? nextVersion : undefined,
     });
     if (duplicates.length > 0) {
@@ -461,6 +557,174 @@ export async function telegramDownloadFile(messageId: number, filename?: string)
 export async function telegramGetObjectUrl(messageId: number): Promise<string> {
     const { blob } = await telegramDownloadBlob(messageId);
     return URL.createObjectURL(blob);
+}
+
+export async function telegramVerifyFile(messageId: number): Promise<IntegrityResult> {
+    const manifest = await getDriveManifest();
+    const record = manifest.files[String(messageId)];
+    if (!record?.checksum) {
+        throw new Error('No checksum is stored for this file yet.');
+    }
+
+    const message = await getTelegramMessage(messageId);
+    const client = await authorizedTelegramClient();
+    const bytes = await downloadMessageBytes(client, message);
+    const blob = new Blob([bytes], { type: message.file?.mimeType || 'application/octet-stream' });
+    const checksum = await sha256Blob(blob);
+    const valid = checksum === record.checksum;
+
+    manifest.files[String(messageId)] = {
+        ...record,
+        checksumVerifiedAt: new Date().toISOString(),
+        integrityStatus: valid ? 'valid' : 'mismatch',
+        updatedAt: new Date().toISOString(),
+    };
+    appendManifestEvent(manifest, 'file_verified', { messageId, valid, checksum });
+    await saveDriveManifest(manifest, 'debounced');
+
+    return {
+        messageId,
+        checksum,
+        expectedChecksum: record.checksum,
+        valid,
+    };
+}
+
+export async function telegramIndexFileText(messageId: number, text: string, source: 'preview' | 'ocr' = 'preview'): Promise<boolean> {
+    const manifest = await getDriveManifest();
+    const key = String(messageId);
+    const record = manifest.files[key];
+    if (!record) throw new Error('File metadata not found');
+
+    const normalized = normalizeSearchText(text).slice(0, 120_000);
+    manifest.files[key] = {
+        ...record,
+        ...(source === 'ocr'
+            ? { ocrText: normalized, ocrIndexedAt: new Date().toISOString() }
+            : { textIndex: normalized, textIndexedAt: new Date().toISOString() }),
+        updatedAt: new Date().toISOString(),
+    };
+    appendManifestEvent(manifest, 'text_indexed', { messageId, source, bytes: normalized.length });
+    await saveDriveManifest(manifest, 'debounced');
+    return true;
+}
+
+export async function telegramGetDriveStats(): Promise<DriveStats> {
+    const manifest = await getDriveManifest();
+    return buildDriveStats(manifest);
+}
+
+export async function telegramExportManifest(): Promise<{ filename: string; payload: string }> {
+    const manifest = await getDriveManifest();
+    return {
+        filename: `telegram-drive-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+        payload: JSON.stringify(manifest, null, 2),
+    };
+}
+
+export async function telegramImportManifest(payload: string): Promise<DriveStats> {
+    const imported = parseManifestJson(payload);
+    if (!imported) throw new Error('Invalid Telegram Drive manifest backup.');
+
+    const current = await getDriveManifest();
+    const merged = mergeManifests(imported, current);
+    appendManifestEvent(merged, 'manifest_imported', {
+        importedFiles: Object.keys(imported.files || {}).length,
+        importedFolders: imported.folders.length,
+    });
+    await saveDriveManifest(merged, 'immediate');
+    return buildDriveStats(merged);
+}
+
+export async function telegramCleanupTrash(days?: number, deleteAll = false): Promise<{ deleted: number; failed: number }> {
+    const client = await authorizedTelegramClient();
+    const manifest = await getDriveManifest();
+    const retentionDays = Number.isFinite(days) ? Number(days) : manifest.settings.trashRetentionDays;
+    const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+    const candidates = Object.values(manifest.files).filter((record) => {
+        if (!record.trashed) return false;
+        if (deleteAll) return true;
+        return new Date(record.deletedAt || record.updatedAt || 0).getTime() <= cutoff;
+    });
+
+    let deleted = 0;
+    let failed = 0;
+    for (const record of candidates) {
+        try {
+            await client.deleteMessages('me', [record.messageId], { revoke: true });
+            delete manifest.fileFolders[String(record.messageId)];
+            delete manifest.files[String(record.messageId)];
+            await deleteOfflineCachedBlob(record.messageId).catch(() => undefined);
+            deleted++;
+        } catch {
+            failed++;
+        }
+    }
+
+    appendManifestEvent(manifest, 'trash_cleaned', { deleted, failed, retentionDays, deleteAll });
+    await saveDriveManifest(manifest, 'debounced');
+    return { deleted, failed };
+}
+
+export async function telegramSetTrashRetention(days: number): Promise<boolean> {
+    const manifest = await getDriveManifest();
+    manifest.settings.trashRetentionDays = Math.max(1, Math.min(365, Math.round(days)));
+    await saveDriveManifest(manifest, 'debounced');
+    return true;
+}
+
+export async function telegramGetOfflineCacheStats(): Promise<OfflineCacheStats> {
+    const index = readOfflineCacheIndex();
+    const bytes = Object.values(index).reduce((sum, entry) => sum + entry.bytes, 0);
+    return {
+        items: Object.keys(index).length,
+        bytes,
+        maxItems: OFFLINE_CACHE_MAX_ITEMS,
+        maxBytes: OFFLINE_CACHE_MAX_BYTES,
+    };
+}
+
+export async function telegramClearOfflineCache(): Promise<OfflineCacheStats> {
+    const index = readOfflineCacheIndex();
+    for (const key of Object.keys(index)) {
+        await deleteOfflineCachedBlob(Number(key)).catch(() => undefined);
+    }
+    const manifest = await getDriveManifest();
+    appendManifestEvent(manifest, 'cache_cleared', { items: Object.keys(index).length });
+    await saveDriveManifest(manifest, 'debounced');
+    return telegramGetOfflineCacheStats();
+}
+
+export async function telegramListAccounts(): Promise<TelegramAccountInfo[]> {
+    const activeId = getActiveAccountId();
+    return readAccountRegistry().map((account) => ({
+        ...account,
+        active: account.id === activeId,
+    }));
+}
+
+export async function telegramSwitchAccount(accountId: string): Promise<boolean> {
+    const accounts = readAccountRegistry();
+    const account = accounts.find((item) => item.id === accountId);
+    if (!account) throw new Error('Account not found');
+
+    localStorage.setItem(ACTIVE_ACCOUNT_KEY, account.id);
+    writeAccountRegistry(accounts.map((item) => item.id === account.id
+        ? { ...item, lastUsedAt: new Date().toISOString() }
+        : item));
+    clientPromise = null;
+    clientCredentials = null;
+    manifestCache = null;
+    writeConfig({ apiId: account.apiId ? String(account.apiId) : undefined, authComplete: true, activeFolderId: null });
+    return true;
+}
+
+export async function telegramPrepareAddAccount(): Promise<boolean> {
+    clientPromise = null;
+    clientCredentials = null;
+    manifestCache = null;
+    writeConfig({ authComplete: false, activeFolderId: null });
+    return true;
 }
 
 export async function telegramRepairManifest(): Promise<{
@@ -498,6 +762,12 @@ export async function telegramRepairManifest(): Promise<{
             versionGroup: before?.versionGroup,
             version: before?.version,
             duplicateOf: before?.duplicateOf,
+            textIndex: before?.textIndex,
+            textIndexedAt: before?.textIndexedAt,
+            ocrText: before?.ocrText,
+            ocrIndexedAt: before?.ocrIndexedAt,
+            checksumVerifiedAt: before?.checksumVerifiedAt,
+            integrityStatus: before?.integrityStatus,
             missing: false,
             updatedAt: new Date().toISOString(),
         };
@@ -566,6 +836,38 @@ async function getSavedMessages(client: TelegramClientInstance, query?: string):
 async function telegramDownloadBlob(messageId: number): Promise<{ blob: Blob; name: string }> {
     const client = await authorizedTelegramClient();
     const message = await getTelegramMessage(messageId);
+    const manifest = await getDriveManifest();
+    const record = manifest.files[String(messageId)];
+    const cached = await getOfflineCachedBlob(messageId);
+    if (cached) {
+        if (record?.checksum) {
+            const cachedChecksum = await sha256Blob(cached.blob);
+            const cachedValid = cachedChecksum === record.checksum;
+            manifest.files[String(messageId)] = {
+                ...record,
+                checksumVerifiedAt: new Date().toISOString(),
+                integrityStatus: cachedValid ? 'valid' : 'mismatch',
+                updatedAt: new Date().toISOString(),
+            };
+            appendManifestEvent(manifest, 'file_verified', { messageId, valid: cachedValid, checksum: cachedChecksum, source: 'cache' });
+            await saveDriveManifest(manifest, 'debounced');
+            if (cachedValid) {
+                addBandwidth('down_bytes', 0);
+                return {
+                    blob: cached.blob,
+                    name: cached.name || record.name || getMessageFilename(message),
+                };
+            }
+            await deleteOfflineCachedBlob(messageId).catch(() => undefined);
+        } else {
+            addBandwidth('down_bytes', 0);
+            return {
+                blob: cached.blob,
+                name: cached.name || record?.name || getMessageFilename(message),
+            };
+        }
+    }
+
     const bytes = await downloadMessageBytes(client, message, {
         progressCallback: (downloaded, total) => {
             const totalNumber = sizeToNumber(total);
@@ -579,9 +881,33 @@ async function telegramDownloadBlob(messageId: number): Promise<{ blob: Blob; na
     const blob = new Blob([bytes], { type: file?.mimeType || 'application/octet-stream' });
     addBandwidth('down_bytes', blob.size);
 
+    if (record?.checksum) {
+        const actual = await sha256Blob(blob);
+        const valid = actual === record.checksum;
+        manifest.files[String(messageId)] = {
+            ...record,
+            checksumVerifiedAt: new Date().toISOString(),
+            integrityStatus: valid ? 'valid' : 'mismatch',
+            updatedAt: new Date().toISOString(),
+        };
+        appendManifestEvent(manifest, 'file_verified', { messageId, valid, checksum: actual });
+        await saveDriveManifest(manifest, 'debounced');
+        if (!valid) {
+            throw new Error(`Checksum mismatch for ${record.name}`);
+        }
+    }
+
+    await putOfflineCachedBlob({
+        messageId,
+        name: record?.name || getMessageFilename(message),
+        blob,
+        mimeType: file?.mimeType || undefined,
+        checksum: record?.checksum,
+    }).catch(() => undefined);
+
     return {
         blob,
-        name: getMessageFilename(message),
+        name: record?.name || getMessageFilename(message),
     };
 }
 
@@ -781,7 +1107,7 @@ function loadLocalManifest(): DriveManifest {
 }
 
 function persistManifestLocally(manifest: DriveManifest) {
-    localStorage.setItem(MANIFEST_CACHE_KEY, JSON.stringify(manifest));
+    localStorage.setItem(scopedKey(MANIFEST_CACHE_KEY), JSON.stringify(manifest));
     writeFolderMap(manifest.fileFolders);
 
     const config = readConfig();
@@ -791,7 +1117,7 @@ function persistManifestLocally(manifest: DriveManifest) {
 
 function readCachedManifest(): DriveManifest | null {
     try {
-        const raw = localStorage.getItem(MANIFEST_CACHE_KEY);
+        const raw = localStorage.getItem(scopedKey(MANIFEST_CACHE_KEY)) || localStorage.getItem(MANIFEST_CACHE_KEY);
         return raw ? normalizeManifest(JSON.parse(raw) as DriveManifest) : null;
     } catch {
         return null;
@@ -945,6 +1271,14 @@ function normalizeFileRecords(
             versionGroup: typeof record.versionGroup === 'string' ? record.versionGroup : undefined,
             version: record.version === undefined ? undefined : Number(record.version) || undefined,
             duplicateOf: record.duplicateOf === undefined ? undefined : Number(record.duplicateOf) || undefined,
+            textIndex: typeof record.textIndex === 'string' ? record.textIndex : undefined,
+            textIndexedAt: typeof record.textIndexedAt === 'string' ? record.textIndexedAt : undefined,
+            ocrText: typeof record.ocrText === 'string' ? record.ocrText : undefined,
+            ocrIndexedAt: typeof record.ocrIndexedAt === 'string' ? record.ocrIndexedAt : undefined,
+            checksumVerifiedAt: typeof record.checksumVerifiedAt === 'string' ? record.checksumVerifiedAt : undefined,
+            integrityStatus: record.integrityStatus === 'valid' || record.integrityStatus === 'mismatch'
+                ? record.integrityStatus
+                : 'unknown',
         };
     }
 
@@ -1107,11 +1441,12 @@ function createVersionGroup(name: string): string {
 }
 
 function getPersistentDriveId(): string {
-    const existing = localStorage.getItem(DRIVE_ID_KEY);
+    const key = scopedKey(DRIVE_ID_KEY);
+    const existing = localStorage.getItem(key) || localStorage.getItem(DRIVE_ID_KEY);
     if (existing) return existing;
 
     const next = crypto.randomUUID ? crypto.randomUUID() : `drive-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    localStorage.setItem(DRIVE_ID_KEY, next);
+    localStorage.setItem(key, next);
     return next;
 }
 
@@ -1168,14 +1503,14 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
 
     const { TelegramClient } = await import('telegram');
     const { StringSession } = await import('telegram/sessions');
-    const session = new StringSession(localStorage.getItem(SESSION_KEY) || '');
+    const session = new StringSession(localStorage.getItem(getCurrentSessionKey()) || localStorage.getItem(SESSION_KEY) || '');
     const client = new TelegramClient(session, apiId, apiHash, {
         connectionRetries: 5,
         requestRetries: 3,
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.0.3-web',
+        appVersion: '1.1.0-web',
     });
 
     await client.connect();
@@ -1220,7 +1555,197 @@ function toTelegramFile(message: TelegramMessage, manifest?: DriveManifest): Tel
         version: record?.version,
         versionGroup: record?.versionGroup,
         duplicateOf: record?.duplicateOf,
+        textIndexedAt: record?.textIndexedAt,
+        ocrIndexedAt: record?.ocrIndexedAt,
+        checksumVerifiedAt: record?.checksumVerifiedAt,
+        integrityStatus: record?.integrityStatus || 'unknown',
     };
+}
+
+function recordToTelegramFile(record: DriveFileRecord): TelegramFile {
+    const size = record.size || 0;
+    return {
+        id: record.messageId,
+        name: record.name,
+        size,
+        sizeStr: formatBytes(size),
+        created_at: record.createdAt ? new Date(record.createdAt).toLocaleString() : '',
+        type: 'file',
+        folderId: record.folderId ?? null,
+        mime_type: record.mimeType,
+        file_ext: getFilenameExtension(record.name),
+        tags: record.tags || [],
+        starred: record.starred || false,
+        trashed: record.trashed || false,
+        missing: record.missing || false,
+        checksum: record.checksum,
+        originalPath: record.originalPath,
+        version: record.version,
+        versionGroup: record.versionGroup,
+        duplicateOf: record.duplicateOf,
+        textIndexedAt: record.textIndexedAt,
+        ocrIndexedAt: record.ocrIndexedAt,
+        checksumVerifiedAt: record.checksumVerifiedAt,
+        integrityStatus: record.integrityStatus || 'unknown',
+    };
+}
+
+type SmartSearchFilters = {
+    terms: string[];
+    tags: string[];
+    types: string[];
+    extensions: string[];
+    starred?: boolean;
+    trashed?: boolean;
+    duplicate?: boolean;
+    verified?: boolean;
+    minSize?: number;
+    maxSize?: number;
+};
+
+function parseSmartSearchQuery(query: string): SmartSearchFilters {
+    const filters: SmartSearchFilters = {
+        terms: [],
+        tags: [],
+        types: [],
+        extensions: [],
+    };
+
+    const tokens = query.match(/"[^"]+"|\S+/g) || [];
+    for (const rawToken of tokens) {
+        const token = rawToken.replace(/^"|"$/g, '').trim();
+        if (!token) continue;
+        const lower = token.toLowerCase();
+
+        if (lower.startsWith('tag:')) {
+            filters.tags.push(lower.slice(4));
+        } else if (lower.startsWith('type:')) {
+            filters.types.push(lower.slice(5));
+        } else if (lower.startsWith('ext:')) {
+            filters.extensions.push(lower.slice(4).replace(/^\./, ''));
+        } else if (lower === 'starred' || lower === 'starred:true') {
+            filters.starred = true;
+        } else if (lower === 'trash' || lower === 'trashed:true') {
+            filters.trashed = true;
+        } else if (lower === '-trash' || lower === 'trashed:false') {
+            filters.trashed = false;
+        } else if (lower === 'duplicate' || lower === 'duplicate:true') {
+            filters.duplicate = true;
+        } else if (lower === 'verified' || lower === 'verified:true') {
+            filters.verified = true;
+        } else if (lower.startsWith('size>')) {
+            filters.minSize = parseSizeFilter(lower.slice(5));
+        } else if (lower.startsWith('size<')) {
+            filters.maxSize = parseSizeFilter(lower.slice(5));
+        } else {
+            filters.terms.push(lower);
+        }
+    }
+
+    return filters;
+}
+
+function matchesSmartSearch(record: DriveFileRecord, filters: SmartSearchFilters): boolean {
+    if (filters.starred !== undefined && Boolean(record.starred) !== filters.starred) return false;
+    if (filters.trashed !== undefined && Boolean(record.trashed) !== filters.trashed) return false;
+    if (filters.duplicate !== undefined && Boolean(record.duplicateOf || record.versionGroup) !== filters.duplicate) return false;
+    if (filters.verified !== undefined && (record.integrityStatus === 'valid') !== filters.verified) return false;
+    if (filters.minSize !== undefined && record.size < filters.minSize) return false;
+    if (filters.maxSize !== undefined && record.size > filters.maxSize) return false;
+
+    const file = recordToTelegramFile(record);
+    if (filters.types.length > 0 && !filters.types.some((type) => matchesFileType(file, type))) return false;
+    if (filters.extensions.length > 0 && !filters.extensions.includes((file.file_ext || '').toLowerCase())) return false;
+    if (filters.tags.length > 0 && !filters.tags.every((tag) => (record.tags || []).includes(tag))) return false;
+
+    const haystack = normalizeSearchText([
+        record.name,
+        record.mimeType,
+        record.originalPath,
+        record.checksum,
+        ...(record.tags || []),
+        record.textIndex,
+        record.ocrText,
+    ].filter(Boolean).join(' '));
+
+    return filters.terms.every((term) => haystack.includes(term));
+}
+
+function matchesFileType(file: TelegramFile, type: string): boolean {
+    if (type === 'image' || type === 'photo') return isImageFile(file);
+    if (type === 'video') return isVideoFile(file);
+    if (type === 'audio' || type === 'music') return isAudioFile(file);
+    if (type === 'media') return isMediaFile(file);
+    if (type === 'pdf') return isPdfFile(file);
+    if (type === 'text' || type === 'document') return isTextPreviewFile(file) || isPdfFile(file);
+    return (file.file_ext || '').toLowerCase() === type;
+}
+
+function parseSizeFilter(input: string): number {
+    const match = input.trim().match(/^(\d+(?:\.\d+)?)(b|kb|mb|gb|tb)?$/i);
+    if (!match) return Number(input) || 0;
+    const value = Number(match[1]);
+    const unit = (match[2] || 'b').toLowerCase();
+    const multipliers: Record<string, number> = {
+        b: 1,
+        kb: 1024,
+        mb: 1024 ** 2,
+        gb: 1024 ** 3,
+        tb: 1024 ** 4,
+    };
+    return value * (multipliers[unit] || 1);
+}
+
+function buildDriveStats(manifest: DriveManifest): DriveStats {
+    const records = Object.values(manifest.files);
+    const active = records.filter((record) => !record.trashed && !record.missing);
+    const trashed = records.filter((record) => record.trashed);
+    const typeMap = new Map<string, { count: number; bytes: number }>();
+
+    for (const record of active) {
+        const label = classifyRecordType(record);
+        const current = typeMap.get(label) || { count: 0, bytes: 0 };
+        current.count += 1;
+        current.bytes += record.size || 0;
+        typeMap.set(label, current);
+    }
+
+    return {
+        totalFiles: records.length,
+        activeFiles: active.length,
+        trashedFiles: trashed.length,
+        starredFiles: records.filter((record) => record.starred && !record.trashed).length,
+        duplicateFiles: records.filter((record) => record.duplicateOf || record.versionGroup).length,
+        missingFiles: records.filter((record) => record.missing).length,
+        totalBytes: records.reduce((sum, record) => sum + (record.size || 0), 0),
+        activeBytes: active.reduce((sum, record) => sum + (record.size || 0), 0),
+        trashedBytes: trashed.reduce((sum, record) => sum + (record.size || 0), 0),
+        indexedTextFiles: records.filter((record) => record.textIndex || record.ocrText).length,
+        verifiedFiles: records.filter((record) => record.integrityStatus === 'valid').length,
+        checksumMismatches: records.filter((record) => record.integrityStatus === 'mismatch').length,
+        folders: manifest.folders.length,
+        backups: manifest.backups.length,
+        trashRetentionDays: manifest.settings.trashRetentionDays,
+        largestFiles: active
+            .slice()
+            .sort((a, b) => (b.size || 0) - (a.size || 0))
+            .slice(0, 8)
+            .map(recordToTelegramFile),
+        types: Array.from(typeMap.entries())
+            .map(([label, value]) => ({ label, ...value }))
+            .sort((a, b) => b.bytes - a.bytes),
+        updatedAt: manifest.updatedAt,
+    };
+}
+
+function classifyRecordType(record: DriveFileRecord): string {
+    const file = recordToTelegramFile(record);
+    if (isImageFile(file)) return 'Images';
+    if (isVideoFile(file)) return 'Videos';
+    if (isAudioFile(file)) return 'Audio';
+    if (isPdfFile(file)) return 'PDFs';
+    if (isTextPreviewFile(file)) return 'Text';
+    return 'Other';
 }
 
 function getMessageFilename(message: TelegramMessage): string {
@@ -1265,9 +1790,17 @@ function getTelegramErrorMessage(err: unknown): string {
     return String(err);
 }
 
-function saveTelegramSession(client: TelegramClientInstance) {
+function saveTelegramSession(client: TelegramClientInstance, pending?: PendingAuth) {
+    const account = pending ? accountFromPendingAuth(pending) : readAccountRegistry().find((item) => item.id === getActiveAccountId());
+    if (account) {
+        localStorage.setItem(ACTIVE_ACCOUNT_KEY, account.id);
+        upsertAccount(account);
+    }
     const saved = client.session.save();
-    localStorage.setItem(SESSION_KEY, String(saved));
+    localStorage.setItem(getCurrentSessionKey(), String(saved));
+    if (getActiveAccountId() === 'default') {
+        localStorage.setItem(SESSION_KEY, String(saved));
+    }
 }
 
 async function normalizeTelegramBytes(value: unknown): Promise<Uint8Array> {
@@ -1384,7 +1917,7 @@ function writeConfig(update: {
 
 function readBandwidth() {
     try {
-        const raw = localStorage.getItem(BANDWIDTH_KEY);
+        const raw = localStorage.getItem(scopedKey(BANDWIDTH_KEY)) || localStorage.getItem(BANDWIDTH_KEY);
         if (raw) return JSON.parse(raw) as { up_bytes: number; down_bytes: number };
     } catch {
         // fall through to zeroed stats
@@ -1395,12 +1928,12 @@ function readBandwidth() {
 function addBandwidth(key: 'up_bytes' | 'down_bytes', bytes: number) {
     const current = readBandwidth();
     current[key] += bytes;
-    localStorage.setItem(BANDWIDTH_KEY, JSON.stringify(current));
+    localStorage.setItem(scopedKey(BANDWIDTH_KEY), JSON.stringify(current));
 }
 
 function readFolderMap(): Record<string, number | null> {
     try {
-        const raw = localStorage.getItem(FOLDER_MAP_KEY);
+        const raw = localStorage.getItem(scopedKey(FOLDER_MAP_KEY)) || localStorage.getItem(FOLDER_MAP_KEY);
         return raw ? JSON.parse(raw) as Record<string, number | null> : {};
     } catch {
         return {};
@@ -1408,15 +1941,180 @@ function readFolderMap(): Record<string, number | null> {
 }
 
 function writeFolderMap(map: Record<string, number | null>) {
-    localStorage.setItem(FOLDER_MAP_KEY, JSON.stringify(map));
+    localStorage.setItem(scopedKey(FOLDER_MAP_KEY), JSON.stringify(map));
 }
 
 function createVirtualFolderId(): number {
-    const current = Number(localStorage.getItem(NEXT_FOLDER_ID_KEY)) || Date.now();
+    const key = scopedKey(NEXT_FOLDER_ID_KEY);
+    const current = Number(localStorage.getItem(key)) || Date.now();
     const randomOffset = Math.floor(Math.random() * 1000);
     const next = Math.max(current + 1, Date.now() + randomOffset);
-    localStorage.setItem(NEXT_FOLDER_ID_KEY, String(next));
+    localStorage.setItem(key, String(next));
     return next;
+}
+
+async function sha256Blob(blob: Blob): Promise<string> {
+    const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+    return Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join('');
+}
+
+function normalizeSearchText(text: string): string {
+    return text.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function readAccountRegistry(): StoredAccount[] {
+    try {
+        const raw = localStorage.getItem(ACCOUNT_REGISTRY_KEY);
+        const accounts = raw ? JSON.parse(raw) as StoredAccount[] : [];
+        const normalized = accounts
+            .filter((account) => account?.id && account.label)
+            .map((account) => ({
+                id: String(account.id),
+                label: String(account.label),
+                apiId: account.apiId === undefined ? undefined : Number(account.apiId),
+                lastUsedAt: typeof account.lastUsedAt === 'string' ? account.lastUsedAt : new Date().toISOString(),
+            }));
+        if (normalized.length > 0) return normalized;
+    } catch {
+        // fall through to default account
+    }
+
+    const legacySession = localStorage.getItem(SESSION_KEY);
+    return legacySession ? [{
+        id: 'default',
+        label: 'Default Telegram',
+        lastUsedAt: new Date().toISOString(),
+    }] : [];
+}
+
+function writeAccountRegistry(accounts: StoredAccount[]) {
+    localStorage.setItem(ACCOUNT_REGISTRY_KEY, JSON.stringify(accounts));
+}
+
+function accountFromPendingAuth(pending: PendingAuth): StoredAccount {
+    const normalizedPhone = pending.phone.replace(/[^\d+]/g, '') || `account-${Date.now()}`;
+    return {
+        id: normalizedPhone,
+        label: normalizedPhone,
+        apiId: pending.apiId,
+        lastUsedAt: new Date().toISOString(),
+    };
+}
+
+function upsertAccount(account: StoredAccount) {
+    const accounts = readAccountRegistry();
+    const next = [
+        { ...account, lastUsedAt: new Date().toISOString() },
+        ...accounts.filter((item) => item.id !== account.id),
+    ];
+    writeAccountRegistry(next);
+}
+
+type OfflineCacheRecord = {
+    messageId: number;
+    name: string;
+    blob: Blob;
+    mimeType?: string;
+    checksum?: string;
+};
+
+function readOfflineCacheIndex(): Record<string, OfflineCacheIndexEntry> {
+    try {
+        const raw = localStorage.getItem(scopedKey(OFFLINE_CACHE_INDEX_KEY));
+        return raw ? JSON.parse(raw) as Record<string, OfflineCacheIndexEntry> : {};
+    } catch {
+        return {};
+    }
+}
+
+function writeOfflineCacheIndex(index: Record<string, OfflineCacheIndexEntry>) {
+    localStorage.setItem(scopedKey(OFFLINE_CACHE_INDEX_KEY), JSON.stringify(index));
+}
+
+function openOfflineCacheDb(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(scopedKey(OFFLINE_CACHE_DB_NAME), OFFLINE_CACHE_DB_VERSION);
+        request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(OFFLINE_CACHE_STORE)) {
+                db.createObjectStore(OFFLINE_CACHE_STORE, { keyPath: 'messageId' });
+            }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Failed to open offline cache'));
+    });
+}
+
+async function withOfflineCacheStore<T>(
+    mode: IDBTransactionMode,
+    callback: (store: IDBObjectStore) => IDBRequest<T>
+): Promise<T> {
+    const db = await openOfflineCacheDb();
+    return await new Promise<T>((resolve, reject) => {
+        const tx = db.transaction(OFFLINE_CACHE_STORE, mode);
+        const store = tx.objectStore(OFFLINE_CACHE_STORE);
+        const request = callback(store);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Offline cache request failed'));
+        tx.oncomplete = () => db.close();
+        tx.onerror = () => {
+            db.close();
+            reject(tx.error || new Error('Offline cache transaction failed'));
+        };
+    });
+}
+
+async function getOfflineCachedBlob(messageId: number): Promise<OfflineCacheRecord | null> {
+    const record = await withOfflineCacheStore<OfflineCacheRecord | undefined>('readonly', (store) => store.get(messageId)).catch(() => undefined);
+    if (!record) return null;
+
+    const index = readOfflineCacheIndex();
+    if (index[String(messageId)]) {
+        index[String(messageId)].lastAccessedAt = new Date().toISOString();
+        writeOfflineCacheIndex(index);
+    }
+    return record;
+}
+
+async function putOfflineCachedBlob(record: OfflineCacheRecord): Promise<void> {
+    if (record.blob.size > OFFLINE_CACHE_MAX_BYTES / 2) return;
+
+    await withOfflineCacheStore('readwrite', (store) => store.put(record));
+    const index = readOfflineCacheIndex();
+    index[String(record.messageId)] = {
+        messageId: record.messageId,
+        name: record.name,
+        bytes: record.blob.size,
+        mimeType: record.mimeType,
+        checksum: record.checksum,
+        updatedAt: new Date().toISOString(),
+        lastAccessedAt: new Date().toISOString(),
+    };
+    writeOfflineCacheIndex(index);
+    await pruneOfflineCache();
+}
+
+async function deleteOfflineCachedBlob(messageId: number): Promise<void> {
+    await withOfflineCacheStore('readwrite', (store) => store.delete(messageId));
+    const index = readOfflineCacheIndex();
+    delete index[String(messageId)];
+    writeOfflineCacheIndex(index);
+}
+
+async function pruneOfflineCache(): Promise<void> {
+    const index = readOfflineCacheIndex();
+    let entries = Object.values(index);
+    let bytes = entries.reduce((sum, entry) => sum + entry.bytes, 0);
+    entries = entries.sort((a, b) => new Date(a.lastAccessedAt).getTime() - new Date(b.lastAccessedAt).getTime());
+
+    while (entries.length > OFFLINE_CACHE_MAX_ITEMS || bytes > OFFLINE_CACHE_MAX_BYTES) {
+        const oldest = entries.shift();
+        if (!oldest) break;
+        bytes -= oldest.bytes;
+        await deleteOfflineCachedBlob(oldest.messageId).catch(() => undefined);
+    }
 }
 
 type SendFileOptions = Parameters<TelegramClientInstance['sendFile']>[1];

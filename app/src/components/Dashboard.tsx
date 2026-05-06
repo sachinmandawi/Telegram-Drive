@@ -3,8 +3,8 @@ import { AnimatePresence } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-import { TelegramFile, BandwidthStats, TelegramFolder } from '../types';
-import { formatBytes, isMediaFile, isPdfFile } from '../utils';
+import { TelegramFile, BandwidthStats, TelegramFolder, DriveView } from '../types';
+import { formatBytes, isImageFile, isMediaFile, isPdfFile } from '../utils';
 
 // Components
 import { Sidebar } from './dashboard/Sidebar';
@@ -18,6 +18,8 @@ import { MediaPlayer } from './dashboard/MediaPlayer';
 import { DragDropOverlay } from './dashboard/DragDropOverlay';
 import { ExternalDropBlocker } from './dashboard/ExternalDropBlocker';
 import { PdfViewer } from './dashboard/PdfViewer';
+import { DriveToolsModal } from './dashboard/DriveToolsModal';
+import { TagEditorModal } from './dashboard/TagEditorModal';
 
 // Hooks
 import { useTelegramConnection } from '../hooks/useTelegramConnection';
@@ -25,6 +27,7 @@ import { useFileOperations } from '../hooks/useFileOperations';
 import { useFileUpload } from '../hooks/useFileUpload';
 import { useFileDownload } from '../hooks/useFileDownload';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { useWatchFolderSync } from '../hooks/useWatchFolderSync';
 import { invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime } from '../platform';
 import { useConfirm } from '../context/ConfirmContext';
 
@@ -43,7 +46,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     const [previewFile, setPreviewFile] = useState<TelegramFile | null>(null);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const [driveView, setDriveView] = useState<'files' | 'starred' | 'trash'>('files');
+    const [driveView, setDriveView] = useState<DriveView>('files');
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
     const [showMoveModal, setShowMoveModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
@@ -61,6 +64,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const [previewContextFiles, setPreviewContextFiles] = useState<TelegramFile[]>([]);
     const [previewContextIndex, setPreviewContextIndex] = useState(-1);
     const [isRepairingDrive, setIsRepairingDrive] = useState(false);
+    const [showTools, setShowTools] = useState(false);
+    const [tagTarget, setTagTarget] = useState<TelegramFile | 'bulk' | null>(null);
 
     useEffect(() => {
         if (store) {
@@ -90,7 +95,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             ...f,
             sizeStr: formatBytes(f.size),
             type: f.icon_type || (f.name.endsWith('/') ? 'folder' : 'file')
-            })));
+            }))).then((files) => {
+                if (driveView === 'gallery') return files.filter(isImageFile);
+                if (driveView === 'media') return files.filter(isMediaFile);
+                return files;
+            });
         },
         enabled: !!store,
     });
@@ -106,9 +115,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         return [...childFolderItems, ...allFiles];
     }, [childFolderItems, allFiles]);
 
-    const displayedFiles = searchTerm.length > 2
+    const baseDisplayedFiles = searchTerm.length > 2
         ? searchResults
         : currentFolderItems.filter((f: TelegramFile) => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    const displayedFiles = baseDisplayedFiles.filter((file) => {
+        if (driveView === 'gallery') return isImageFile(file);
+        if (driveView === 'media') return isMediaFile(file);
+        return true;
+    });
 
     const displayedFileItems = useMemo(() => {
         return displayedFiles.filter((f) => f.type !== 'folder');
@@ -128,8 +142,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     } = useFileOperations(activeFolderId, selectedIds, setSelectedIds, displayedFileItems);
 
-    const { uploadQueue, setUploadQueue, handleManualUpload, handleDroppedFiles, queueFileEntries, cancelAll: cancelUploads, isDragging } = useFileUpload(activeFolderId, store);
-    const { downloadQueue, queueDownload, clearFinished: clearDownloads, cancelAll: cancelDownloads } = useFileDownload(store);
+    const { uploadQueue, setUploadQueue, handleManualUpload, handleDroppedFiles, queueFileEntries, cancelAll: cancelUploads, retryFailed: retryFailedUploads, isDragging } = useFileUpload(activeFolderId, store);
+    const { downloadQueue, queueDownload, clearFinished: clearDownloads, cancelAll: cancelDownloads, retryFailed: retryFailedDownloads } = useFileDownload(store);
+    const watchFolder = useWatchFolderSync(activeFolderId, store, queueFileEntries);
 
 
     const handleSelectAll = useCallback(() => {
@@ -177,7 +192,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         onEscape: handleEscape,
         onSearch: handleFocusSearch,
         onEnter: handleEnter,
-        enabled: !previewFile && !playingFile && !pdfFile && !showMoveModal // Disable when modals are open
+        enabled: !previewFile && !playingFile && !pdfFile && !showMoveModal && !showTools && !tagTarget // Disable when modals are open
     });
 
 
@@ -373,6 +388,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     const currentFolderName = driveView === 'starred'
         ? "Starred"
+        : driveView === 'gallery'
+            ? "Gallery"
+            : driveView === 'media'
+                ? "Media"
         : driveView === 'trash'
             ? "Trash"
             : activeFolderId === null
@@ -519,6 +538,63 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         }
     }, [queryClient, savedMessagesDefault]);
 
+    const handleBulkStar = useCallback(async () => {
+        const files = displayedFileItems.filter((file) => selectedIds.includes(file.id));
+        if (files.length === 0) return;
+        try {
+            await Promise.all(files.map((file) => invokeCommand('cmd_toggle_star', { messageId: file.id, starred: true })));
+            queryClient.invalidateQueries({ queryKey: ['files'] });
+            toast.success(`Starred ${files.length} file(s).`);
+        } catch (e) {
+            toast.error(`Bulk star failed: ${e}`);
+        }
+    }, [displayedFileItems, queryClient, selectedIds]);
+
+    const handleSaveTags = useCallback(async (tags: string[]) => {
+        const target = tagTarget;
+        if (!target) return;
+
+        const targets = target === 'bulk'
+            ? displayedFileItems.filter((file) => selectedIds.includes(file.id))
+            : [target];
+
+        try {
+            await Promise.all(targets.map((file) => invokeCommand('cmd_set_tags', { messageId: file.id, tags })));
+            queryClient.invalidateQueries({ queryKey: ['files'] });
+            toast.success(`Updated tags for ${targets.length} file(s).`);
+            setTagTarget(null);
+            if (target === 'bulk') setSelectedIds([]);
+        } catch (e) {
+            toast.error(`Tag update failed: ${e}`);
+        }
+    }, [displayedFileItems, queryClient, selectedIds, tagTarget]);
+
+    const handleVerifyFile = useCallback(async (file: TelegramFile) => {
+        try {
+            const result = await invokeCommand<{ valid: boolean }>('cmd_verify_file', { messageId: file.id });
+            queryClient.invalidateQueries({ queryKey: ['files'] });
+            toast.success(result.valid ? 'Checksum verified' : 'Checksum mismatch detected');
+        } catch (e) {
+            toast.error(`Verify failed: ${e}`);
+        }
+    }, [queryClient]);
+
+    const handleDataChanged = useCallback(() => {
+        queryClient.invalidateQueries({ queryKey: ['files'] });
+        queryClient.invalidateQueries({ queryKey: ['bandwidth'] });
+        handleSyncFolders();
+    }, [handleSyncFolders, queryClient]);
+
+    const handleAddAccount = useCallback(async () => {
+        await invokeCommand('cmd_prepare_add_account').catch(() => undefined);
+        if (store) {
+            await store.set('auth_complete', false);
+            await store.set('activeFolderId', null);
+            await store.save();
+        }
+        onLogout();
+    }, [onLogout, store]);
+
     const handleVisibleBulkDelete = useCallback(async () => {
         if (driveView !== 'trash') {
             handleBulkDelete();
@@ -610,6 +686,25 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     />
                 )}
                 {isDragging && internalDragFileId === null && <DragDropOverlay key="drag-drop-overlay" />}
+                {showTools && (
+                    <DriveToolsModal
+                        key="drive-tools"
+                        watchFolder={watchFolder}
+                        selectedCount={selectedIds.length}
+                        onClose={() => setShowTools(false)}
+                        onDataChanged={handleDataChanged}
+                        onAddAccount={handleAddAccount}
+                    />
+                )}
+                {tagTarget && (
+                    <TagEditorModal
+                        key="tag-editor"
+                        title={tagTarget === 'bulk' ? `Tag ${selectedIds.length} Selected File(s)` : `Tags for ${tagTarget.name}`}
+                        initialTags={tagTarget === 'bulk' ? [] : tagTarget.tags || []}
+                        onSave={handleSaveTags}
+                        onClose={() => setTagTarget(null)}
+                    />
+                )}
             </AnimatePresence>
 
             <Sidebar
@@ -642,6 +737,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     searchTerm={searchTerm}
                     onSearchChange={setSearchTerm}
                     savedMessagesOnly={driveView !== 'files'}
+                    onBulkTag={() => setTagTarget('bulk')}
+                    onBulkStar={handleBulkStar}
+                    onOpenTools={() => setShowTools(true)}
                     onRepairDrive={savedMessagesDefault ? handleRepairDrive : undefined}
                     isRepairing={isRepairingDrive}
                 />
@@ -674,6 +772,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onDragEnd={() => setTimeout(() => setInternalDragFileId(null), 50)}
                     onToggleStar={handleToggleStar}
                     onRestore={handleRestoreFile}
+                    onEditTags={(file) => setTagTarget(file)}
+                    onVerify={handleVerifyFile}
                 />
             </main>
 
@@ -696,11 +796,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 items={uploadQueue}
                 onClearFinished={() => setUploadQueue(q => q.filter(i => i.status !== 'success' && i.status !== 'error' && i.status !== 'cancelled'))}
                 onCancelAll={cancelUploads}
+                onRetryFailed={retryFailedUploads}
             />
             <DownloadQueue
                 items={downloadQueue}
                 onClearFinished={clearDownloads}
                 onCancelAll={cancelDownloads}
+                onRetryFailed={retryFailedDownloads}
             />
         </div>
     );

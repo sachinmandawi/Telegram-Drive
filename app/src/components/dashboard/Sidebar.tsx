@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { HardDrive, Folder, Plus, RefreshCw, LogOut, Star, Trash2 } from 'lucide-react';
+import { HardDrive, Folder, Plus, RefreshCw, LogOut, Star, Trash2, Images, Music2 } from 'lucide-react';
 import { SidebarItem } from './SidebarItem';
 import { BandwidthWidget } from './BandwidthWidget';
 import { getPublicAssetPath } from '../../platform';
-import { TelegramFolder, BandwidthStats } from '../../types';
+import { TelegramFolder, BandwidthStats, DriveView } from '../../types';
 
 interface SidebarProps {
     folders: TelegramFolder[];
@@ -19,8 +19,8 @@ interface SidebarProps {
     bandwidth: BandwidthStats | null;
     connectionLabel?: string;
     savedMessagesOnly?: boolean;
-    activeDriveView?: 'files' | 'starred' | 'trash';
-    onDriveViewChange?: (view: 'files' | 'starred' | 'trash') => void;
+    activeDriveView?: DriveView;
+    onDriveViewChange?: (view: DriveView) => void;
 }
 
 export function Sidebar({
@@ -70,6 +70,22 @@ export function Sidebar({
                     label="Starred"
                     active={activeDriveView === 'starred'}
                     onClick={() => onDriveViewChange?.('starred')}
+                    onDrop={() => undefined}
+                    folderId={null}
+                />
+                <SidebarItem
+                    icon={Images}
+                    label="Gallery"
+                    active={activeDriveView === 'gallery'}
+                    onClick={() => onDriveViewChange?.('gallery')}
+                    onDrop={() => undefined}
+                    folderId={null}
+                />
+                <SidebarItem
+                    icon={Music2}
+                    label="Media"
+                    active={activeDriveView === 'media'}
+                    onClick={() => onDriveViewChange?.('media')}
                     onDrop={() => undefined}
                     folderId={null}
                 />

@@ -1,4 +1,11 @@
-import type { BandwidthStats, TelegramFile, TelegramFolder } from './types';
+import type {
+    BandwidthStats,
+    DriveStats,
+    IntegrityResult,
+    OfflineCacheStats,
+    TelegramFile,
+    TelegramFolder,
+} from './types';
 import { formatBytes } from './utils';
 import {
     telegramCheckPassword,
@@ -10,19 +17,32 @@ import {
     telegramFlushManifest,
     telegramGetFiles,
     telegramGetFolders,
+    telegramGetDriveStats,
+    telegramGetOfflineCacheStats,
     telegramGetObjectUrl,
     telegramGetStarredFiles,
     telegramGetTrashFiles,
+    telegramExportManifest,
+    telegramImportManifest,
+    telegramIndexFileText,
+    telegramListAccounts,
     telegramLogout,
     telegramMoveFiles,
+    telegramPrepareAddAccount,
     telegramPermanentlyDeleteFile,
+    telegramCleanupTrash,
+    telegramClearOfflineCache,
     telegramRepairManifest,
     telegramRequestCode,
     telegramRestoreFile,
+    telegramSearchFiles,
+    telegramSetTrashRetention,
     telegramSignIn,
     telegramSetFileTags,
+    telegramSwitchAccount,
     telegramToggleStarFile,
     telegramUploadFile,
+    telegramVerifyFile,
 } from './telegramBrowser';
 
 export interface AppStore {
@@ -49,6 +69,12 @@ type WebFileRecord = {
     mime_type?: string;
     file_ext?: string;
     blob: Blob;
+    tags?: string[];
+    starred?: boolean;
+    trashed?: boolean;
+    checksum?: string;
+    textIndex?: string;
+    integrityStatus?: 'unknown' | 'valid' | 'mismatch';
 };
 
 const DB_NAME = 'telegram-drive-web';
@@ -185,6 +211,7 @@ export async function uploadBrowserFile(
 
     const id = nextWebId();
     onProgress?.(15);
+    const checksum = await sha256Blob(file);
 
     const record: WebFileRecord = {
         id,
@@ -196,6 +223,11 @@ export async function uploadBrowserFile(
         mime_type: file.type || undefined,
         file_ext: getExtension(file.name),
         blob: file,
+        tags: [],
+        starred: false,
+        trashed: false,
+        checksum,
+        integrityStatus: 'unknown',
     };
 
     await putWebFile(record);
@@ -258,6 +290,22 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
             return navigator.onLine as T;
         case 'cmd_get_bandwidth':
             return readBandwidth() as T;
+        case 'cmd_get_drive_stats':
+            return await getWebDriveStats() as T;
+        case 'cmd_export_manifest':
+            return {
+                filename: `telegram-drive-browser-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+                payload: JSON.stringify(await getAllWebFiles(), null, 2),
+            } as T;
+        case 'cmd_import_manifest':
+            await importWebManifest(String(args.payload || ''));
+            return await getWebDriveStats() as T;
+        case 'cmd_cleanup_trash':
+            return await cleanupWebTrash(Boolean(args.deleteAll)) as T;
+        case 'cmd_get_offline_cache_stats':
+            return ({ items: 0, bytes: 0, maxItems: 0, maxBytes: 0 } satisfies OfflineCacheStats) as T;
+        case 'cmd_clear_offline_cache':
+            return ({ items: 0, bytes: 0, maxItems: 0, maxBytes: 0 } satisfies OfflineCacheStats) as T;
         case 'cmd_create_folder':
             return {
                 id: nextWebId(),
@@ -269,7 +317,33 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
         case 'cmd_get_files':
             return await getWebFiles((args.folderId as number | null | undefined) ?? null) as T;
         case 'cmd_delete_file':
+            await trashWebFile(Number(args.messageId));
+            return true as T;
+        case 'cmd_restore_file':
+            await updateWebFile(Number(args.messageId), (record) => ({ ...record, trashed: false }));
+            return true as T;
+        case 'cmd_permanent_delete_file':
             await deleteWebFile(Number(args.messageId));
+            return true as T;
+        case 'cmd_toggle_star':
+            await updateWebFile(Number(args.messageId), (record) => ({
+                ...record,
+                starred: typeof args.starred === 'boolean' ? args.starred : !record.starred,
+            }));
+            return true as T;
+        case 'cmd_set_tags':
+            await updateWebFile(Number(args.messageId), (record) => ({
+                ...record,
+                tags: Array.isArray(args.tags) ? args.tags.map(String).map((tag) => tag.trim().toLowerCase()).filter(Boolean) : [],
+            }));
+            return true as T;
+        case 'cmd_verify_file':
+            return await verifyWebFile(Number(args.messageId)) as T;
+        case 'cmd_index_file_text':
+            await updateWebFile(Number(args.messageId), (record) => ({
+                ...record,
+                textIndex: String(args.text || '').toLowerCase(),
+            }));
             return true as T;
         case 'cmd_move_files':
             await moveWebFiles(
@@ -279,6 +353,17 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
             return true as T;
         case 'cmd_search_global':
             return await searchWebFiles(String(args.query || '')) as T;
+        case 'cmd_get_trash_files':
+            return await getWebTrashFiles(String(args.query || '')) as T;
+        case 'cmd_get_starred_files':
+            return await getWebStarredFiles(String(args.query || '')) as T;
+        case 'cmd_set_trash_retention':
+            return true as T;
+        case 'cmd_list_accounts':
+            return [] as T;
+        case 'cmd_switch_account':
+        case 'cmd_prepare_add_account':
+            return true as T;
         case 'cmd_get_preview':
         case 'cmd_get_thumbnail':
             return await getBrowserFileObjectUrl(Number(args.messageId)) as T;
@@ -321,7 +406,38 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
         case 'cmd_get_trash_files':
             return await telegramGetTrashFiles(String(args.query || '')) as T;
         case 'cmd_search_global':
-            return await telegramGetFiles(undefined, String(args.query || '')) as T;
+            return await telegramSearchFiles(String(args.query || '')) as T;
+        case 'cmd_get_drive_stats':
+            return await telegramGetDriveStats() as T;
+        case 'cmd_export_manifest':
+            return await telegramExportManifest() as T;
+        case 'cmd_import_manifest':
+            return await telegramImportManifest(String(args.payload || '')) as T;
+        case 'cmd_cleanup_trash':
+            return await telegramCleanupTrash(
+                typeof args.days === 'number' ? args.days : undefined,
+                Boolean(args.deleteAll)
+            ) as T;
+        case 'cmd_set_trash_retention':
+            return await telegramSetTrashRetention(Number(args.days) || 30) as T;
+        case 'cmd_get_offline_cache_stats':
+            return await telegramGetOfflineCacheStats() as T;
+        case 'cmd_clear_offline_cache':
+            return await telegramClearOfflineCache() as T;
+        case 'cmd_verify_file':
+            return await telegramVerifyFile(Number(args.messageId)) as T;
+        case 'cmd_index_file_text':
+            return await telegramIndexFileText(
+                Number(args.messageId),
+                String(args.text || ''),
+                args.source === 'ocr' ? 'ocr' : 'preview'
+            ) as T;
+        case 'cmd_list_accounts':
+            return await telegramListAccounts() as T;
+        case 'cmd_switch_account':
+            return await telegramSwitchAccount(String(args.accountId || '')) as T;
+        case 'cmd_prepare_add_account':
+            return await telegramPrepareAddAccount() as T;
         case 'cmd_delete_file':
             return await telegramDeleteFile(Number(args.messageId)) as T;
         case 'cmd_restore_file':
@@ -413,6 +529,11 @@ function toTelegramFile(record: WebFileRecord): TelegramFile {
         type: 'file',
         mime_type: record.mime_type,
         file_ext: record.file_ext,
+        tags: record.tags || [],
+        starred: record.starred || false,
+        trashed: record.trashed || false,
+        checksum: record.checksum,
+        integrityStatus: record.integrityStatus || 'unknown',
     };
 }
 
@@ -464,6 +585,16 @@ async function deleteWebFile(id: number): Promise<void> {
     await withFileStore('readwrite', (store) => store.delete(id));
 }
 
+async function updateWebFile(id: number, updater: (record: WebFileRecord) => WebFileRecord): Promise<void> {
+    const record = await getWebFile(id);
+    if (!record) throw new Error('File not found');
+    await putWebFile(updater(record));
+}
+
+async function trashWebFile(id: number): Promise<void> {
+    await updateWebFile(id, (record) => ({ ...record, trashed: true }));
+}
+
 async function getAllWebFiles(): Promise<WebFileRecord[]> {
     return await withFileStore<WebFileRecord[]>('readonly', (store) => store.getAll());
 }
@@ -471,7 +602,7 @@ async function getAllWebFiles(): Promise<WebFileRecord[]> {
 async function getWebFiles(folderId: number | null): Promise<TelegramFile[]> {
     const records = await getAllWebFiles();
     return records
-        .filter((record) => (record.folderId ?? null) === folderId)
+        .filter((record) => !record.trashed && (record.folderId ?? null) === folderId)
         .map(toTelegramFile);
 }
 
@@ -481,7 +612,36 @@ async function searchWebFiles(query: string): Promise<TelegramFile[]> {
 
     const records = await getAllWebFiles();
     return records
-        .filter((record) => record.name.toLowerCase().includes(normalized))
+        .filter((record) => !record.trashed)
+        .filter((record) => {
+            const haystack = [
+                record.name,
+                record.mime_type,
+                record.file_ext,
+                record.checksum,
+                record.textIndex,
+                ...(record.tags || []),
+            ].filter(Boolean).join(' ').toLowerCase();
+            return haystack.includes(normalized);
+        })
+        .map(toTelegramFile);
+}
+
+async function getWebTrashFiles(query: string): Promise<TelegramFile[]> {
+    const normalized = query.trim().toLowerCase();
+    const records = await getAllWebFiles();
+    return records
+        .filter((record) => record.trashed)
+        .filter((record) => !normalized || record.name.toLowerCase().includes(normalized))
+        .map(toTelegramFile);
+}
+
+async function getWebStarredFiles(query: string): Promise<TelegramFile[]> {
+    const normalized = query.trim().toLowerCase();
+    const records = await getAllWebFiles();
+    return records
+        .filter((record) => record.starred && !record.trashed)
+        .filter((record) => !normalized || record.name.toLowerCase().includes(normalized))
         .map(toTelegramFile);
 }
 
@@ -500,4 +660,70 @@ async function deleteWebFolder(folderId: number): Promise<void> {
     for (const record of recordsToDelete) {
         await deleteWebFile(record.id);
     }
+}
+
+async function getWebDriveStats(): Promise<DriveStats> {
+    const records = await getAllWebFiles();
+    const active = records.filter((record) => !record.trashed);
+    const trashed = records.filter((record) => record.trashed);
+    return {
+        totalFiles: records.length,
+        activeFiles: active.length,
+        trashedFiles: trashed.length,
+        starredFiles: active.filter((record) => record.starred).length,
+        duplicateFiles: 0,
+        missingFiles: 0,
+        totalBytes: records.reduce((sum, record) => sum + record.size, 0),
+        activeBytes: active.reduce((sum, record) => sum + record.size, 0),
+        trashedBytes: trashed.reduce((sum, record) => sum + record.size, 0),
+        indexedTextFiles: records.filter((record) => record.textIndex).length,
+        verifiedFiles: records.filter((record) => record.integrityStatus === 'valid').length,
+        checksumMismatches: records.filter((record) => record.integrityStatus === 'mismatch').length,
+        folders: 0,
+        backups: 0,
+        trashRetentionDays: 30,
+        largestFiles: active.slice().sort((a, b) => b.size - a.size).slice(0, 8).map(toTelegramFile),
+        types: [],
+        updatedAt: new Date().toISOString(),
+    };
+}
+
+async function verifyWebFile(messageId: number): Promise<IntegrityResult> {
+    const record = await getWebFile(messageId);
+    if (!record) throw new Error('File not found');
+    const checksum = await sha256Blob(record.blob);
+    const valid = !record.checksum || checksum === record.checksum;
+    await putWebFile({ ...record, checksum, integrityStatus: valid ? 'valid' : 'mismatch' });
+    return {
+        messageId,
+        checksum,
+        expectedChecksum: record.checksum,
+        valid,
+    };
+}
+
+async function importWebManifest(payload: string): Promise<void> {
+    const parsed = JSON.parse(payload) as WebFileRecord[];
+    if (!Array.isArray(parsed)) throw new Error('Invalid browser backup');
+    for (const record of parsed) {
+        if (record?.id && record.blob) await putWebFile(record);
+    }
+}
+
+async function cleanupWebTrash(deleteAll: boolean): Promise<{ deleted: number; failed: number }> {
+    const records = await getAllWebFiles();
+    const candidates = records.filter((record) => record.trashed || deleteAll);
+    let deleted = 0;
+    for (const record of candidates) {
+        await deleteWebFile(record.id);
+        deleted++;
+    }
+    return { deleted, failed: 0 };
+}
+
+async function sha256Blob(blob: Blob): Promise<string> {
+    const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+    return Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join('');
 }
