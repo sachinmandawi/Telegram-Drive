@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Get version from tag
         id: get_version
@@ -24,7 +24,7 @@ jobs:
       
       - name: Create Release
         id: create-release
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const { data } = await github.rest.repos.createRelease({
@@ -68,10 +68,10 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
@@ -262,7 +262,7 @@ jobs:
       contents: write
     steps:
       - name: Publish Release
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           release_id: ${{ needs.create-release.outputs.release_id }}
         with:
