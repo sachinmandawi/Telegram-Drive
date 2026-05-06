@@ -399,14 +399,7 @@ export async function telegramUploadFile(
         duplicate.updatedAt = updatedAt;
     }
 
-    const { Buffer } = await import('buffer');
-    const { CustomFile } = await import('telegram/client/uploads');
-    const uploadFile = new CustomFile(
-        file.name,
-        file.size,
-        '',
-        Buffer.from(await file.arrayBuffer())
-    );
+    const uploadFile = file;
 
     const message = await sendTelegramFileWithRetry(client, 'me', {
         file: uploadFile,
@@ -734,12 +727,13 @@ async function parseManifestMessage(client: TelegramClientInstance, message: Tel
 
 async function writeRemoteManifest(manifest: DriveManifest): Promise<void> {
     const client = await authorizedTelegramClient();
-    const { Buffer } = await import('buffer');
-    const { CustomFile } = await import('telegram/client/uploads');
     const normalized = normalizeManifest(manifest);
     const payload = JSON.stringify(normalized);
-    const bytes = Buffer.from(payload, 'utf8');
-    const manifestFile = new CustomFile(MANIFEST_FILENAME, bytes.length, '', bytes);
+    const manifestBlob = new Blob([payload], { type: 'application/json' });
+    const manifestFile = new File([manifestBlob], MANIFEST_FILENAME, {
+        type: 'application/json',
+        lastModified: Date.now(),
+    });
     const existing = Array.from(await client.getMessages('me', {
         limit: 50,
         search: MANIFEST_MARKER,
@@ -747,7 +741,7 @@ async function writeRemoteManifest(manifest: DriveManifest): Promise<void> {
 
     const newMessage = await sendTelegramFileWithRetry(client, 'me', {
         file: manifestFile,
-        fileSize: bytes.length,
+        fileSize: manifestFile.size,
         forceDocument: true,
         caption: MANIFEST_MARKER,
         workers: 1,
@@ -1181,7 +1175,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.0.2-web',
+        appVersion: '1.0.3-web',
     });
 
     await client.connect();

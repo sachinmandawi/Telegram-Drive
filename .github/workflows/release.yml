@@ -32,7 +32,7 @@ jobs:
               repo: context.repo.repo,
               tag_name: `v${{ steps.get_version.outputs.VERSION }}`,
               name: `Telegram Drive v${{ steps.get_version.outputs.VERSION }}`,
-              body: `Telegram Drive now includes persistent Saved Messages storage, folders, trash, starred files, repair tools, stabilized uploads, and broader previews for PDF, DOCX, text/code, CSV, and TSV files across both the website and desktop app.\n\nSee the assets below to download and install.`,
+              body: `Telegram Drive now includes persistent Saved Messages storage, folders, trash, starred files, repair tools, safer browser-only uploads, and broader previews for PDF, DOCX, text/code, CSV, and TSV files across both the website and desktop app.\n\nSee the assets below to download and install.`,
               draft: true,
               prerelease: false
             });

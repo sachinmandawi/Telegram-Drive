@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.3] - 2026-05-06
+
+### Upload Fix
+
+- Fixed browser-only uploads failing on some files with `Either one of \`buffer\` or \`filePath\` should be specified`.
+- Switched browser Telegram uploads and manifest snapshots to native browser `File` payloads for safer large-file handling.
+- Rebuilt website and desktop installers from the corrected upload path.
+
 ## [1.0.2] - 2026-05-06
 
 ### Preview Update
