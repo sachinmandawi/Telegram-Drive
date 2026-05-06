@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1] - 2026-05-06
+
+### Fix Release
+
+- Fixed Telegram 2FA password verification for browser-only Saved Messages mode.
+- Fixed missing logo and favicon paths on the GitHub Pages website.
+- Rebuilt and republished the website and desktop installers from the corrected codebase.
+
 ## [1.0.0] - 2026-05-06
 
 ### First Public Release
