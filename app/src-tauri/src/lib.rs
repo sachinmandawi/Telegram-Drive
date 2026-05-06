@@ -73,8 +73,12 @@ pub fn run() {
                     match server::start_server(state, STREAM_PORT, token_for_server).await {
                         Ok(server) => {
                             // Store the handle so RunEvent::Exit can stop it
-                            *handle_for_thread.lock().unwrap() = Some(server.handle());
-                            // Now await the server — blocks until stopped
+                            if let Ok(mut handle) = handle_for_thread.lock() {
+                                *handle = Some(server.handle());
+                            } else {
+                                log::warn!("Actix server handle lock is poisoned; shutdown handle not stored");
+                            }
+                            // Now await the server. This blocks until stopped.
                             server.await.ok();
                         }
                         Err(e) => log::error!("Streaming server failed: {}", e),
@@ -113,7 +117,7 @@ pub fn run() {
 
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Exit = event {
-            log::info!("Application exiting — shutting down background services...");
+            log::info!("Application exiting - shutting down background services...");
 
             // 1. Shutdown the grammers network runner
             let shutdown_arc = app_handle.state::<TelegramState>().runner_shutdown.clone();
@@ -129,7 +133,7 @@ pub fn run() {
             if let Some(handle) = server_handle {
                 log::info!("Stopping Actix streaming server...");
                 // stop() sends the signal synchronously; the returned future
-                // tracks drain completion — we don't need to await it on exit.
+                // tracks drain completion; we don't need to await it on exit.
                 drop(handle.stop(true));
             }
         }

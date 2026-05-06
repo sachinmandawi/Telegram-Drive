@@ -1,10 +1,10 @@
 import { useEffect, useState, useRef } from 'react';
 import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
-// Use the legacy build — the modern build uses Map.getOrInsertComputed()
+// Use the legacy build because the modern build uses Map.getOrInsertComputed(),
 // which isn't available in Tauri's WebKit WebView
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { TelegramFile } from '../../types';
-import { getBrowserFileObjectUrl, invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime } from '../../platform';
+import { getBrowserFileObjectUrl, invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime, type StreamInfo } from '../../platform';
 
 // Use Vite's ?url suffix to get a properly bundled asset URL for the worker
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
@@ -21,7 +21,7 @@ interface PdfViewerProps {
 }
 
 export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalItems, activeFolderId }: PdfViewerProps) {
-    const [streamToken, setStreamToken] = useState<string | null>(null);
+    const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
     const [browserUrl, setBrowserUrl] = useState<string | null>(null);
     const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
     const [numPages, setNumPages] = useState<number>(0);
@@ -33,43 +33,63 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
     const isDesktopRuntime = isTauriRuntime();
     const useDesktopStream = isDesktopRuntime && !isSavedMessagesDefaultStorage();
 
-    // Fetch stream token once
+    // Fetch stream info once
     useEffect(() => {
+        let cancelled = false;
+
         if (useDesktopStream) {
-            invokeCommand<string>('cmd_get_stream_token').then(setStreamToken).catch((err) => {
-                console.error("Failed to get stream token:", err);
-                setError("Failed to initialize stream");
-            });
-            return;
+            setBrowserUrl(null);
+            invokeCommand<StreamInfo>('cmd_get_stream_info')
+                .then((info) => {
+                    if (!cancelled) setStreamInfo(info);
+                })
+                .catch(() => {
+                    if (!cancelled) {
+                        setStreamInfo(null);
+                        setError("Failed to initialize stream");
+                        setLoading(false);
+                    }
+                });
+
+            return () => {
+                cancelled = true;
+            };
         }
 
+        setStreamInfo(null);
         let objectUrl: string | null = null;
         getBrowserFileObjectUrl(file.id).then((url) => {
+            if (cancelled) {
+                URL.revokeObjectURL(url);
+                return;
+            }
             objectUrl = url;
             setBrowserUrl(url);
-        }).catch((err) => {
-            console.error("Failed to load browser PDF:", err);
+        }).catch(() => {
             setError("Failed to load local document");
+            setLoading(false);
         });
 
         return () => {
+            cancelled = true;
             if (objectUrl) URL.revokeObjectURL(objectUrl);
         };
     }, [file.id, useDesktopStream]);
 
     // Load PDF document when stream URL is ready or file changes
     useEffect(() => {
-        if (useDesktopStream && !streamToken) return;
-        if (!useDesktopStream && !browserUrl) return;
+        const folderIdParam = activeFolderId !== null ? activeFolderId.toString() : 'home';
+        const streamUrl = browserUrl || (streamInfo
+            ? `${streamInfo.base_url}/stream/${folderIdParam}/${file.id}?token=${encodeURIComponent(streamInfo.token)}`
+            : null);
+
+        if (!streamUrl) return;
 
         let cancelled = false;
         setLoading(true);
         setError(null);
         setPdf(null);
         setNumPages(0);
-
-        const folderIdParam = activeFolderId !== null ? activeFolderId.toString() : 'home';
-        const streamUrl = browserUrl || `http://localhost:14200/stream/${folderIdParam}/${file.id}?token=${streamToken}`;
 
         const loadingTask = pdfjsLib.getDocument(streamUrl);
 
@@ -90,8 +110,8 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
             },
             (err) => {
                 if (cancelled) return;
-                console.error("Error loading PDF:", err);
-                setError("Failed to load PDF document.");
+                const message = err instanceof Error ? err.message : "Failed to load PDF document.";
+                setError(message);
                 setLoading(false);
             }
         );
@@ -100,7 +120,7 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
             cancelled = true;
             loadingTask.destroy();
         };
-    }, [streamToken, browserUrl, activeFolderId, file.id, useDesktopStream]);
+    }, [streamInfo, browserUrl, activeFolderId, file.id]);
 
     // Cleanup PDF document on unmount
     useEffect(() => {
@@ -263,7 +283,7 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
     );
 }
 
-// Individual Page Component — lazy-loaded via IntersectionObserver
+// Individual page component, lazy-loaded via IntersectionObserver.
 function PdfPage({ pageNumber, pdf, scale }: { pageNumber: number; pdf: pdfjsLib.PDFDocumentProxy; scale: number }) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const renderTaskRef = useRef<ReturnType<pdfjsLib.PDFPageProxy['render']> | null>(null);
@@ -271,7 +291,7 @@ function PdfPage({ pageNumber, pdf, scale }: { pageNumber: number; pdf: pdfjsLib
     const containerRef = useRef<HTMLDivElement>(null);
     const [page, setPage] = useState<pdfjsLib.PDFPageProxy | null>(null);
 
-    // Intersection Observer — load page data when within 1000px of viewport
+    // IntersectionObserver loads page data when within 1000px of the viewport.
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
@@ -298,14 +318,16 @@ function PdfPage({ pageNumber, pdf, scale }: { pageNumber: number; pdf: pdfjsLib
             if (!cancelled) {
                 setPage(loadedPage);
             }
-        }).catch(err => console.error(`Error loading page ${pageNumber}:`, err));
+        }).catch(() => {
+            if (!cancelled) setPage(null);
+        });
 
         return () => {
             cancelled = true;
         };
     }, [isVisible, pdf, pageNumber]);
 
-    // Render the page to canvas — re-runs when page loads or scale changes
+    // Render the page to canvas when page data or zoom changes.
     useEffect(() => {
         if (!page || !canvasRef.current || !isVisible) return;
 
@@ -333,11 +355,8 @@ function PdfPage({ pageNumber, pdf, scale }: { pageNumber: number; pdf: pdfjsLib
         });
         renderTaskRef.current = renderTask;
 
-        renderTask.promise.catch((err) => {
-            // RenderingCancelledException is expected during zoom — ignore it
-            if (err?.name !== 'RenderingCancelledException') {
-                console.error(`Render error on page ${pageNumber}:`, err);
-            }
+        renderTask.promise.catch(() => {
+            // Rendering can be cancelled during zoom or navigation.
         });
 
         return () => {

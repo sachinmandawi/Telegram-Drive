@@ -1,10 +1,22 @@
 # Changelog
 
+## [1.1.10] - 2026-05-06
+
+### Fixes
+
+- Defaulted public browser/desktop builds to Telegram Saved Messages storage when no local env override is present.
+- Fixed desktop media and PDF streaming by using the backend-provided stream URL instead of a hardcoded port.
+- Aligned frontend package version with the Tauri app version.
+- Changed the main GitHub Actions workflow from release publishing on every main push to validation-only CI.
+- Hardened backend bandwidth, logout, network check, and global search paths against avoidable panics.
+
+---
+
 ## [1.1.7] - 2026-05-01
 
 ### Feature
 
-- Added a donation button and popup modal to the main login screen to support the project via PayPal, Litecoin, and Bitcoin.
+- Updated login-screen support UI and release notes.
 
 ---
 
@@ -12,12 +24,7 @@
 
 ### Fix
 
-- Fixed process not terminating on Ctrl+C (SIGINT) when launched from a terminal.
-  The Actix-web streaming server and grammers network runner were running on
-  non-daemon threads with no shutdown signal wired to process exit, causing the
-  application to hang indefinitely after the main window closed. The app now
-  registers a RunEvent::Exit handler that gracefully stops both background
-  services before the process exits.
+- Fixed process shutdown when launched from a terminal. The Actix streaming server and grammers network runner now receive shutdown signals when the app exits.
 
 ---
 
@@ -25,7 +32,7 @@
 
 ### Hotfix
 
-- **CI fix: AppImage patch step now runs cleanly** — Replaced the fragile `grep -oP` Perl lookahead (which exited with code 2 under `set -euo pipefail`) with a safe `awk`-based `.desktop` file lookup. Added `APPIMAGE_EXTRACT_AND_RUN=1` so `appimagetool` doesn't require the FUSE kernel module on GitHub Actions runners.
+- Fixed the AppImage patch step by replacing a fragile grep lookup with an awk-based desktop-file lookup and enabling `APPIMAGE_EXTRACT_AND_RUN=1` for GitHub Actions.
 
 ---
 
@@ -33,7 +40,7 @@
 
 ### Hotfix
 
-- **Deeper AppImage EGL fix for Arch/rolling-release Linux** — Added a CI post-build patching step that strips the Ubuntu-bundled `libEGL`, `libGL`, `libGLdispatch`, `libGLX`, and `libGLESv2` from the AppImage squashfs and replaces the `AppRun` wrapper with one that: normalises the locale to `C.UTF-8`, sets `NO_AT_BRIDGE=1` to silence ATK warnings, auto-detects `EGL_PLATFORM` from `$WAYLAND_DISPLAY`/`$DISPLAY`, points GLVND at the system ICD vendor dirs, preloads the system `libEGL.so.1`, and orders `LD_LIBRARY_PATH` so host GPU drivers are always resolved before bundled stubs.
+- Added a deeper AppImage EGL compatibility patch for Arch and rolling-release Linux distributions.
 
 ---
 
@@ -41,7 +48,7 @@
 
 ### Hotfix
 
-- **Fixed Arch Linux AppImage crash** — Resolved `EGL_BAD_ALLOC` error on Arch Linux (and other rolling-release distros) caused by bundled Mesa/EGL libraries conflicting with the host GPU driver stack. The app now automatically disables WebKitGTK's DMA-BUF renderer on Linux before the WebView initializes, with no impact to Windows or macOS builds.
+- Fixed Arch Linux AppImage startup crashes caused by bundled Mesa/EGL libraries conflicting with host GPU drivers.
 
 ---
 
@@ -49,15 +56,14 @@
 
 ### Fixes
 
-- Finally squashed the grid overlap bug for real. Cards were using CSS `aspect-[4/3]` to size themselves, but the virtualizer was computing row heights separately — at certain window widths these disagreed and rows would bleed into each other. Now both use the same explicit pixel height, so no more overlap regardless of how you resize the window.
+- Fixed grid card overlap by making virtualizer row heights and CSS card sizing agree.
 
 ### Cleanup
 
-- Went through the whole codebase and ripped out every `console.log` / `console.error` we'd left in from debugging (16 of them). The one in `ErrorBoundary` stays since that's the whole point of an error boundary.
-- Got rid of all `as any` casts on the frontend — everything's properly typed now.
-- Ran Clippy and fixed all 7 warnings, including a couple of `collapsible_match` ones in `fs.rs` that needed manual refactoring.
-- Dropped `clsx`, `tailwind-merge`, and `@tauri-apps/plugin-opener` from `package.json` — none of them were actually imported anywhere.
-- General comment cleanup throughout.
+- Removed leftover frontend debug logging except the intentional ErrorBoundary report.
+- Removed loose frontend `any` casts.
+- Ran Clippy and fixed warnings.
+- Removed unused frontend packages.
 
 ---
 
@@ -65,9 +71,7 @@
 
 ### Bug Fixes
 
-- **Grid Spacing Fix** - Fixed cards overlapping in grid view
-- **Dynamic Row Height** - Grid now properly calculates row height based on window size
-- **Virtualizer Re-measurement** - Grid correctly updates when resizing window
+- Fixed grid spacing, dynamic row height, and virtualizer re-measurement behavior.
 
 ---
 
@@ -75,10 +79,7 @@
 
 ### Automated Release Pipeline
 
-- **GitHub Actions Workflow** - Automatic builds triggered on version tags
-- **Cross-Platform Builds** - Windows, Linux, macOS (Intel + ARM) built in parallel
-- **Signed Updates** - All builds signed with Ed25519 for secure auto-updates
-- **Automatic Publishing** - Releases published to GitHub automatically
+- Added tag-triggered GitHub Actions builds for Windows, Linux, and macOS.
 
 ---
 
@@ -86,49 +87,17 @@
 
 ### Auto-Update System
 
-- **Automatic Update Checks** - App checks for updates 5 seconds after startup
-- **Update Banner** - Beautiful animated banner when new version available
-- **One-Click Updates** - Download and install updates with progress indicator
-- **Cross-Platform** - Windows, Mac, and Linux users get platform-specific updates
-
-### 🔧 Technical
-
-- Added Tauri updater plugin with Ed25519 signing
-- Created `useUpdateCheck` hook for update lifecycle management
-- Added `UpdateBanner` component with download progress
+- Added automatic update checks, update banner UI, Tauri updater integration, and platform-specific update support.
 
 ---
 
-## [1.0.0] - 2026-02-06 🎉
+## [1.0.0] - 2026-02-06
 
 ### First Stable Release
 
-Telegram Drive is now production-ready! This release focuses on performance, reliability, and user experience polish.
-
-### ✨ New Features
-
-- **Virtual Scrolling** - Smooth performance with folders containing 1000+ files
-- **Inline Thumbnails** - Image files now display thumbnails directly in the file grid
-- **Thumbnail Caching** - Thumbnails are cached locally for instant loading on revisit
-- **API Setup Help Guide** - Step-by-step modal explaining how to get Telegram API credentials
-
-### 🚀 Performance Improvements
-
-- Grid and list views now only render visible items (virtualized)
-- Responsive column layout adapts to window width
-- Lazy loading of thumbnails to reduce initial load time
-
-### 🎨 UI/UX Improvements
-
-- Refined grid spacing (6px gaps between cards)
-- Gradient overlay on thumbnail cards for text readability
-- Improved light mode support across all components
-
-### 🔧 Technical
-
-- Added `@tanstack/react-virtual` for virtualization
-- Separate thumbnail cache directory (`app_data_dir/thumbnails/`)
-- FileTypeIcon now supports multiple sizes
+- Added virtual scrolling, inline thumbnails, thumbnail caching, and API setup help.
+- Improved grid/list rendering performance and responsive layout behavior.
+- Refined light mode and file-grid UI.
 
 ---
 
@@ -136,27 +105,20 @@ Telegram Drive is now production-ready! This release focuses on performance, rel
 
 ### Reliability Update
 
-- Session persistence (window state, UI state, active folder)
-- Network resilience with connection status indicator
-- Queue persistence for uploads/downloads
-- Light mode UI fixes
+- Added session persistence, network resilience, queue persistence, and light mode fixes.
 
 ---
 
 ## [0.5.0] - 2026-02-04
 
-### Drag & Drop Update
+### Drag And Drop Update
 
-- Stable hybrid drag-drop system
-- External drop blocker
-- GitHub Actions workflow fixes
+- Added stable hybrid drag-and-drop, external drop blocking, and workflow fixes.
 
 ---
 
 ## [0.4.0] - 2026-02-01
 
-### Media & Performance
+### Media And Performance
 
-- Audio/Video streaming player
-- Global search filter
-- Internal drag & drop between folders
+- Added audio/video streaming player, global search, and internal folder drag-and-drop.

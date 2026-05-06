@@ -11,7 +11,7 @@ import { Toaster } from "sonner";
 import { ConfirmProvider } from "./context/ConfirmContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { DropZoneProvider } from "./contexts/DropZoneContext";
-import { isSavedMessagesDefaultStorage, isTauriRuntime, loadAppStore } from "./platform";
+import { isSavedMessagesDefaultStorage, loadAppStore } from "./platform";
 
 const queryClient = new QueryClient();
 
@@ -29,7 +29,7 @@ function AppContent() {
       }))
       .then(({ authComplete, apiId }) => {
         if (cancelled || !authComplete) return;
-        if (isSavedMessagesDefaultStorage() && !isTauriRuntime() && (!apiId || apiId === 'browser')) return;
+        if (isSavedMessagesDefaultStorage() && (!apiId || apiId === 'browser')) return;
         setIsAuthenticated(true);
       })
       .catch(() => undefined);

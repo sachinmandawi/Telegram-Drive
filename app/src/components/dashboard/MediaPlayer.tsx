@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { isVideoFile, isAudioFile } from '../../utils';
-import { getBrowserFileObjectUrl, invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime } from '../../platform';
+import { getBrowserFileObjectUrl, invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime, type StreamInfo } from '../../platform';
 
 interface MediaPlayerProps {
     file: TelegramFile;
@@ -15,31 +15,49 @@ interface MediaPlayerProps {
 }
 
 export function MediaPlayer({ file, onClose, onNext, onPrev, currentIndex, totalItems, activeFolderId }: MediaPlayerProps) {
-    const [streamToken, setStreamToken] = useState<string | null>(null);
+    const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
     const [browserUrl, setBrowserUrl] = useState<string | null>(null);
     const isDesktopRuntime = isTauriRuntime();
     const useDesktopStream = isDesktopRuntime && !isSavedMessagesDefaultStorage();
 
     useEffect(() => {
+        let cancelled = false;
+
         if (useDesktopStream) {
-            invokeCommand<string>('cmd_get_stream_token').then(setStreamToken).catch(() => {});
-            return;
+            setBrowserUrl(null);
+            invokeCommand<StreamInfo>('cmd_get_stream_info')
+                .then((info) => {
+                    if (!cancelled) setStreamInfo(info);
+                })
+                .catch(() => {
+                    if (!cancelled) setStreamInfo(null);
+                });
+
+            return () => {
+                cancelled = true;
+            };
         }
 
+        setStreamInfo(null);
         let objectUrl: string | null = null;
         getBrowserFileObjectUrl(file.id).then((url) => {
+            if (cancelled) {
+                URL.revokeObjectURL(url);
+                return;
+            }
             objectUrl = url;
             setBrowserUrl(url);
         }).catch(() => setBrowserUrl(null));
 
         return () => {
+            cancelled = true;
             if (objectUrl) URL.revokeObjectURL(objectUrl);
         };
     }, [file.id, useDesktopStream]);
 
     const folderIdParam = activeFolderId !== null ? activeFolderId.toString() : 'home';
-    const streamUrl = browserUrl || (streamToken
-        ? `http://localhost:14200/stream/${folderIdParam}/${file.id}?token=${streamToken}`
+    const streamUrl = browserUrl || (streamInfo
+        ? `${streamInfo.base_url}/stream/${folderIdParam}/${file.id}?token=${encodeURIComponent(streamInfo.token)}`
         : null);
 
     const isVideo = isVideoFile(file.name);
@@ -132,7 +150,7 @@ export function MediaPlayer({ file, onClose, onNext, onPrev, currentIndex, total
                     <p className="text-sm text-white/50">
                         Streaming from Telegram Drive
                         {typeof currentIndex === 'number' && typeof totalItems === 'number' && totalItems > 0 && (
-                            <span className="ml-2">• {currentIndex + 1}/{totalItems}</span>
+                            <span className="ml-2">- {currentIndex + 1}/{totalItems}</span>
                         )}
                     </p>
                 </div>

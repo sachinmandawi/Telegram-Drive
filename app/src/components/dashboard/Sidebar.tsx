@@ -96,7 +96,7 @@ export function Sidebar({
                 ))}
             </nav>
 
-            {/* Sticky Create Folder section — always visible above the footer */}
+            {/* Sticky Create Folder section, always visible above the footer. */}
             {!savedMessagesOnly && <div className="px-2 pb-2 border-b border-telegram-border">
                 {showNewFolderInput ? (
                     <div className="px-3 py-2">

@@ -35,25 +35,38 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
 
     // Lazy load thumbnail for image files
     useEffect(() => {
-        if (isFolder || !isImageFile(file.name)) return;
+        if (isFolder || !isImageFile(file.name)) {
+            setThumbnail(null);
+            setThumbnailLoading(false);
+            return;
+        }
 
         let cancelled = false;
+        let thumbnailUrl: string | null = null;
         setThumbnailLoading(true);
+        setThumbnail(null);
 
         invokeCommand<string>('cmd_get_thumbnail', {
             messageId: file.id,
             folderId: activeFolderId
         }).then((result) => {
-            if (!cancelled && result) {
-                setThumbnail(result);
+            if (!result) return;
+            if (cancelled) {
+                if (result.startsWith('blob:')) URL.revokeObjectURL(result);
+                return;
             }
+            thumbnailUrl = result;
+            setThumbnail(result);
         }).catch(() => {
             // Silently fail - will show icon instead
         }).finally(() => {
             if (!cancelled) setThumbnailLoading(false);
         });
 
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+            if (thumbnailUrl?.startsWith('blob:')) URL.revokeObjectURL(thumbnailUrl);
+        };
     }, [file.id, file.name, activeFolderId, isFolder]);
 
     return (
@@ -87,7 +100,7 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
             <motion.div
                 layout
                 draggable={!isFolder}
-                onDragStart={(e: any) => {
+                onDragStartCapture={(e: React.DragEvent<HTMLDivElement>) => {
                     if (onDragStart) onDragStart(file.id);
                     e.dataTransfer.setData("application/x-telegram-file-id", file.id.toString());
                     e.dataTransfer.effectAllowed = 'move';

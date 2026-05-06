@@ -29,7 +29,7 @@ export function MoveToFolderModal({ folders, onClose, onSelect, activeFolderId }
                         </button>
                     )}
 
-                    {folders.map((f: any) => {
+                    {folders.map((f) => {
                         if (f.id === activeFolderId) return null;
                         return (
                             <button

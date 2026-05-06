@@ -31,15 +31,22 @@ pub async fn ensure_client_initialized(
     // CRITICAL: Shutdown existing runner before creating a new one
     // This prevents runner task accumulation which causes stack overflow
     let did_shutdown_old_runner = {
-        let mut guard = state.runner_shutdown.lock().unwrap();
-        if let Some(shutdown_tx) = guard.take() {
-            log::info!("Signaling old runner to shutdown...");
-            let _ = shutdown_tx.send(());
-            true
-        } else {
-            false
+        match state.runner_shutdown.lock() {
+            Ok(mut guard) => {
+                if let Some(shutdown_tx) = guard.take() {
+                    log::info!("Signaling old runner to shutdown...");
+                    let _ = shutdown_tx.send(());
+                    true
+                } else {
+                    false
+                }
+            }
+            Err(_) => {
+                log::warn!("Runner shutdown lock is poisoned; old runner may still be active");
+                false
+            }
         }
-    }; // MutexGuard dropped here — before the await
+    }; // MutexGuard dropped here before the await.
     if did_shutdown_old_runner {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
@@ -80,7 +87,11 @@ pub async fn ensure_client_initialized(
     
     // Create shutdown channel for this runner
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
-    *state.runner_shutdown.lock().unwrap() = Some(shutdown_tx);
+    if let Ok(mut guard) = state.runner_shutdown.lock() {
+        *guard = Some(shutdown_tx);
+    } else {
+        log::warn!("Runner shutdown lock is poisoned; shutdown handle not stored");
+    }
     
     // Spawn the network runner with shutdown support
     let SenderPool { runner, .. } = pool;
@@ -166,10 +177,13 @@ pub async fn cmd_logout(
     
     // 1. Shutdown the network runner FIRST to prevent any operations
     {
-        let mut shutdown_guard = state.runner_shutdown.lock().unwrap();
-        if let Some(shutdown_tx) = shutdown_guard.take() {
-            log::info!("Signaling runner shutdown for logout...");
-            let _ = shutdown_tx.send(());
+        if let Ok(mut shutdown_guard) = state.runner_shutdown.lock() {
+            if let Some(shutdown_tx) = shutdown_guard.take() {
+                log::info!("Signaling runner shutdown for logout...");
+                let _ = shutdown_tx.send(());
+            }
+        } else {
+            log::warn!("Runner shutdown lock is poisoned during logout");
         }
     }
     
@@ -188,7 +202,10 @@ pub async fn cmd_logout(
     crate::commands::utils::clear_peer_cache(&state.peer_cache).await;
 
     // 4. Remove Session File
-    let app_data_dir = app_handle.path().app_data_dir().unwrap();
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
     let session_path = app_data_dir.join("telegram.session");
     let _ = std::fs::remove_file(session_path);
     let _ = std::fs::remove_file(app_data_dir.join("telegram.session-wal"));

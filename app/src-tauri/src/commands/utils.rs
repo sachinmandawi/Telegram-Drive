@@ -8,9 +8,9 @@ use tokio::sync::RwLock;
 
 /// Resolve a folder_id to a Telegram Peer, using the cache for O(1) lookups.
 ///
-/// - `folder_id == None` → returns the user's own peer (Saved Messages)
-/// - Cache hit → returns immediately without any network call
-/// - Cache miss → scans all dialogs, populates the cache, and returns
+/// - `folder_id == None` returns the user's own peer (Saved Messages)
+/// - Cache hit returns immediately without any network call
+/// - Cache miss scans all dialogs, populates the cache, and returns
 pub async fn resolve_peer(
     client: &Client,
     folder_id: Option<i64>,
@@ -40,7 +40,7 @@ pub async fn resolve_peer(
                 cache.insert(id, dialog.peer.clone());
                 if id == fid {
                     found = Some(dialog.peer.clone());
-                    // Don't break — keep scanning to warm the cache
+                    // Keep scanning to warm the cache.
                 }
             }
         }

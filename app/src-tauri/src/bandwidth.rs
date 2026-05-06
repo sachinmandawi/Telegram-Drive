@@ -52,16 +52,21 @@ impl BandwidthManager {
 
     pub fn check_and_reset(&self) {
         let today = Local::now().format("%Y-%m-%d").to_string();
-        let mut stats = self.stats.lock().unwrap();
+        let Ok(mut stats) = self.stats.lock() else {
+            log::warn!("Bandwidth stats lock is poisoned; skipping daily reset");
+            return;
+        };
+
         if stats.date != today {
-            println!("[Bandwidth] New day detected. Resetting stats. Old date: {}, New date: {}", stats.date, today);
+            log::info!(
+                "New bandwidth day detected. Resetting stats. Old date: {}, New date: {}",
+                stats.date,
+                today
+            );
             stats.date = today;
             stats.up_bytes = 0;
             stats.down_bytes = 0;
-            // Save immediately
-            drop(stats); // Release lock before calling save if save uses lock (it doesn't, but self.save_locked needs the data)
-            // Actually save_locked takes &stats, so we keep lock.
-            if let Ok(json) = serde_json::to_string(&self.stats.lock().unwrap().clone()) { let _ = fs::write(&self.file_path, json); }
+            self.save_locked(&stats);
         }
     }
 
@@ -72,16 +77,22 @@ impl BandwidthManager {
 
     pub fn add_up(&self, bytes: u64) {
         self.check_and_reset();
-        let mut stats = self.stats.lock().unwrap();
-        stats.up_bytes += bytes;
-        self.save_locked(&stats);
+        if let Ok(mut stats) = self.stats.lock() {
+            stats.up_bytes = stats.up_bytes.saturating_add(bytes);
+            self.save_locked(&stats);
+        } else {
+            log::warn!("Bandwidth stats lock is poisoned; upload bytes not recorded");
+        }
     }
     
     pub fn add_down(&self, bytes: u64) {
         self.check_and_reset();
-        let mut stats = self.stats.lock().unwrap();
-        stats.down_bytes += bytes;
-        self.save_locked(&stats);
+        if let Ok(mut stats) = self.stats.lock() {
+            stats.down_bytes = stats.down_bytes.saturating_add(bytes);
+            self.save_locked(&stats);
+        } else {
+            log::warn!("Bandwidth stats lock is poisoned; download bytes not recorded");
+        }
     }
 
     fn save_locked(&self, stats: &BandwidthStats) {
@@ -92,7 +103,10 @@ impl BandwidthManager {
     
     pub fn get_stats(&self) -> BandwidthStats {
         self.check_and_reset();
-        self.stats.lock().unwrap().clone()
+        self.stats
+            .lock()
+            .map(|stats| stats.clone())
+            .unwrap_or_default()
     }
 
 }

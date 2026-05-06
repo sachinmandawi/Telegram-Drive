@@ -58,10 +58,9 @@ pub async fn cmd_get_preview(
     log::info!("Using preview cache dir: {:?}", cache_dir);
     log::info!("Preview Request: msg_id={}", message_id);
     let client_opt = { state.client.lock().await.clone() };
-    if client_opt.is_none() {
+    let Some(client) = client_opt else {
         return Ok("".to_string());
-    }
-    let client = client_opt.unwrap();
+    };
 
     let peer = resolve_peer(&client, folder_id, &state.peer_cache).await?;
     let messages = client.get_messages_by_id(&peer, &[message_id])
@@ -217,10 +216,9 @@ pub async fn cmd_get_thumbnail(
 
     // No cache, need to fetch from Telegram
     let client_opt = { state.client.lock().await.clone() };
-    if client_opt.is_none() {
+    let Some(client) = client_opt else {
         return Ok("".to_string());
-    }
-    let client = client_opt.unwrap();
+    };
 
     let peer = resolve_peer(&client, folder_id, &state.peer_cache).await?;
     let messages = client.get_messages_by_id(&peer, &[message_id])

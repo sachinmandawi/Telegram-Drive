@@ -16,18 +16,18 @@ pub async fn cmd_create_folder(
         state.client.lock().await.clone()
     };
     
-    // --- MOCK ---
-    if client_opt.is_none() {
-        let mock_id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+    let Some(client) = client_opt else {
+        let mock_id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
         log::info!("[MOCK] Created folder '{}' with ID {}", name, mock_id);
         return Ok(FolderMetadata {
             id: mock_id,
             name,
             parent_id: None,
         });
-    }
-    // -----------
-    let client = client_opt.unwrap();
+    };
     log::info!("Creating Telegram Channel: {}", name);
     
     let result = client.invoke(&tl::functions::channels::CreateChannel {
@@ -80,11 +80,10 @@ pub async fn cmd_delete_folder(
         state.client.lock().await.clone()
     };
     
-    if client_opt.is_none() {
+    let Some(client) = client_opt else {
         log::info!("[MOCK] Deleted folder ID {}", folder_id);
         return Ok(true);
-    }
-    let client = client_opt.unwrap();
+    };
     log::info!("Deleting folder/channel: {}", folder_id);
 
     let peer = resolve_peer(&client, Some(folder_id), &state.peer_cache).await?;
@@ -129,12 +128,11 @@ pub async fn cmd_upload_file(
     let tid = transfer_id.unwrap_or_default();
 
     let client_opt = { state.client.lock().await.clone() };
-    if client_opt.is_none() {
+    let Some(client) = client_opt else {
         log::info!("[MOCK] Uploaded file {} to {:?}", path, folder_id);
         bw_state.add_up(size);
         return Ok("Mock upload successful".to_string());
-    }
-    let client = client_opt.unwrap();
+    };
     
     // Emit start progress
     if !tid.is_empty() {
@@ -172,11 +170,10 @@ pub async fn cmd_delete_file(
     state: State<'_, TelegramState>,
 ) -> Result<bool, String> {
     let client_opt = { state.client.lock().await.clone() };
-    if client_opt.is_none() { 
+    let Some(client) = client_opt else {
          log::info!("[MOCK] Deleted message {} from folder {:?}", message_id, folder_id);
         return Ok(true); 
-    }
-    let client = client_opt.unwrap();
+    };
 
     let peer = resolve_peer(&client, folder_id, &state.peer_cache).await?;
     client.delete_messages(&peer, &[message_id]).await.map_err(|e| e.to_string())?;
@@ -196,12 +193,11 @@ pub async fn cmd_download_file(
     let tid = transfer_id.unwrap_or_default();
 
     let client_opt = { state.client.lock().await.clone() };
-    if client_opt.is_none() { 
+    let Some(client) = client_opt else {
         log::info!("[MOCK] Downloaded message {} from {:?} to {}", message_id, folder_id, save_path);
         if let Err(e) = std::fs::write(&save_path, b"Mock Content") { return Err(e.to_string()); }
         return Ok("Download successful".to_string());
-    }
-    let client = client_opt.unwrap();
+    };
     
     let peer = resolve_peer(&client, folder_id, &state.peer_cache).await?;
 
@@ -269,11 +265,10 @@ pub async fn cmd_move_files(
 ) -> Result<bool, String> {
     if source_folder_id == target_folder_id { return Ok(true); }
     let client_opt = { state.client.lock().await.clone() };
-    if client_opt.is_none() { 
+    let Some(client) = client_opt else {
         log::info!("[MOCK] Moved msgs {:?} from {:?} to {:?}", message_ids, source_folder_id, target_folder_id);
         return Ok(true); 
-    }
-    let client = client_opt.unwrap();
+    };
 
     let source_peer = resolve_peer(&client, source_folder_id, &state.peer_cache).await?;
     let target_peer = resolve_peer(&client, target_folder_id, &state.peer_cache).await?;
@@ -297,11 +292,10 @@ pub async fn cmd_get_files(
     state: State<'_, TelegramState>,
 ) -> Result<Vec<FileMetadata>, String> {
     let client_opt = { state.client.lock().await.clone() };
-    if client_opt.is_none() { 
+    let Some(client) = client_opt else {
         log::info!("[MOCK] Returning mock files for folder {:?}", folder_id);
         return Ok(Vec::new()); // No mock files for now
-    }
-    let client = client_opt.unwrap();
+    };
     let mut files = Vec::new();
     
     let peer = resolve_peer(&client, folder_id, &state.peer_cache).await?;
@@ -335,10 +329,9 @@ pub async fn cmd_search_global(
     state: State<'_, TelegramState>,
 ) -> Result<Vec<FileMetadata>, String> {
     let client_opt = { state.client.lock().await.clone() };
-    if client_opt.is_none() { 
+    let Some(client) = client_opt else {
         return Ok(Vec::new());
-    }
-    let client = client_opt.unwrap();
+    };
     let mut files = Vec::new();
     
     log::info!("Searching global for: {}", query);
@@ -362,7 +355,7 @@ pub async fn cmd_search_global(
         for msg in msgs.messages {
             if let tl::enums::Message::Message(m) = msg {
                 if let Some(tl::enums::MessageMedia::Document(d)) = m.media {
-                    if let tl::enums::Document::Document(doc) = d.document.unwrap() {
+                    if let Some(tl::enums::Document::Document(doc)) = d.document {
                         let name = doc.attributes.iter().find_map(|a| match a {
                             tl::enums::DocumentAttribute::Filename(f) => Some(f.file_name.clone()),
                             _ => None
@@ -388,7 +381,7 @@ pub async fn cmd_search_global(
         for msg in msgs.messages {
             if let tl::enums::Message::Message(m) = msg {
                 if let Some(tl::enums::MessageMedia::Document(d)) = m.media {
-                    if let tl::enums::Document::Document(doc) = d.document.unwrap() {
+                    if let Some(tl::enums::Document::Document(doc)) = d.document {
                         let name = doc.attributes.iter().find_map(|a| match a {
                             tl::enums::DocumentAttribute::Filename(f) => Some(f.file_name.clone()),
                             _ => None
@@ -420,10 +413,9 @@ pub async fn cmd_scan_folders(
     state: State<'_, TelegramState>,
 ) -> Result<Vec<FolderMetadata>, String> {
     let client_opt = { state.client.lock().await.clone() };
-    if client_opt.is_none() { 
+    let Some(client) = client_opt else {
         return Ok(Vec::new());
-    }
-    let client = client_opt.unwrap();
+    };
     
     let mut folders = Vec::new();
     let mut dialogs = client.iter_dialogs();

@@ -34,6 +34,11 @@ export interface AppStore {
 
 type CommandArgs = Record<string, unknown>;
 type EventHandler<T> = (event: { payload: T }) => void;
+export interface StreamInfo {
+    token: string;
+    base_url: string;
+}
+
 type WebFileRecord = {
     id: number;
     folderId: number | null;
@@ -57,7 +62,7 @@ export const isTauriRuntime = () =>
     typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 export const isSavedMessagesDefaultStorage = () =>
-    import.meta.env.VITE_DEFAULT_STORAGE === 'saved_messages';
+    (import.meta.env.VITE_DEFAULT_STORAGE || 'saved_messages') === 'saved_messages';
 
 export const telegramApiDefaults = () => ({
     apiId: import.meta.env.VITE_TELEGRAM_API_ID || '',
@@ -277,8 +282,8 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
         case 'cmd_download_file':
             await downloadBrowserFile(Number(args.messageId));
             return 'Download started' as T;
-        case 'cmd_get_stream_token':
-            return 'browser' as T;
+        case 'cmd_get_stream_info':
+            return ({ token: 'browser', base_url: '' } satisfies StreamInfo) as T;
         default:
             throw new Error(`Browser mode does not support ${command}`);
     }
@@ -354,8 +359,8 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
                 (args.messageIds as number[] | undefined) || [],
                 (args.targetFolderId as number | null | undefined) ?? null
             ) as T;
-        case 'cmd_get_stream_token':
-            return 'browser-telegram' as T;
+        case 'cmd_get_stream_info':
+            return ({ token: 'browser-telegram', base_url: '' } satisfies StreamInfo) as T;
         default:
             throw new Error(`Browser Telegram mode does not support ${command}`);
     }

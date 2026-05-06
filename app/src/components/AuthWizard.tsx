@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Phone, Key, Lock, ArrowRight, Settings, ShieldCheck, Sun, Moon, HelpCircle, ExternalLink, X, Heart } from "lucide-react";
+import { Phone, Key, Lock, ArrowRight, Settings, ShieldCheck, Sun, Moon, HelpCircle, ExternalLink, X, Heart, Timer } from "lucide-react";
 import { useTheme } from '../context/ThemeContext';
 import { invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime, loadAppStore, openExternal, telegramApiDefaults } from '../platform';
 
@@ -268,7 +268,7 @@ export function AuthWizard({ onLogin }: { onLogin: () => void }) {
                             className="text-center space-y-6"
                         >
                             <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto animate-pulse">
-                                <span className="text-2xl">⏳</span>
+                                <Timer className="w-8 h-8 text-red-300" />
                             </div>
                             <div>
                                 <h2 className="text-xl font-bold text-white mb-2">Too Many Requests</h2>
@@ -566,7 +566,7 @@ export function AuthWizard({ onLogin }: { onLogin: () => void }) {
 
                                 <div className="p-4 bg-telegram-hover rounded-xl border border-telegram-border">
                                     <p className="text-xs text-telegram-subtext">
-                                        <strong>🔒 Privacy:</strong> Your credentials are stored locally on your device and are never sent to any third-party servers. All data goes directly between you and Telegram.
+                                        <strong>Privacy:</strong> Your credentials are stored locally on your device and are never sent to any third-party servers. All data goes directly between you and Telegram.
                                     </p>
                                 </div>
 
