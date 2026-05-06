@@ -2,12 +2,31 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
 
-const host = (globalThis as typeof globalThis & {
+const env = (globalThis as typeof globalThis & {
   process?: { env?: Record<string, string | undefined> };
-}).process?.env?.TAURI_DEV_HOST;
+}).process?.env ?? {};
+
+const host = env.TAURI_DEV_HOST;
+
+function normalizeBasePath(input?: string) {
+  if (!input) {
+    return "/";
+  }
+
+  const trimmed = input.trim();
+  if (!trimmed || trimmed === "/") {
+    return "/";
+  }
+
+  const withoutSlashes = trimmed.replace(/^\/+|\/+$/g, "");
+  return `/${withoutSlashes}/`;
+}
+
+const basePath = normalizeBasePath(env.VITE_BASE_PATH);
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
+  base: basePath,
   plugins: [
     react(),
     nodePolyfills({
