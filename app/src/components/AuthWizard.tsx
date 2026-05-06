@@ -615,17 +615,19 @@ export function AuthWizard({ onLogin }: { onLogin: () => void }) {
                                 </p>
 
                                 <div className="space-y-4">
-                                    <a href="#" onClick={(e) => { e.preventDefault(); openExternal('https://www.paypal.me/Caamer20'); }} className="block hover:opacity-80 transition-opacity">
-                                        <img src="https://raw.githubusercontent.com/stefan-niedermann/paypal-donate-button/master/paypal-donate-button.png" alt="Donate with PayPal" width="200" className="mx-auto" />
-                                    </a>
+                                    <button
+                                        onClick={() => openExternal('https://github.com/sachinmandawi/Telegram-Drive')}
+                                        className="w-full px-4 py-3 rounded-lg bg-telegram-primary text-white font-semibold hover:bg-telegram-primary/90 transition-colors"
+                                    >
+                                        View GitHub Repository
+                                    </button>
 
-                                    <a href="#" onClick={(e) => { e.preventDefault(); openExternal('https://link.trustwallet.com/send?address=ltc1q6wkr5ac4u0pxx4hx7xgwn0gsaku25ws0df73rp&asset=c2'); }} className="block hover:opacity-80 transition-opacity">
-                                        <img src="https://img.shields.io/badge/Donate-LTC-345D9D?style=for-the-badge&logo=litecoin&logoColor=white" alt="Donate LTC" className="mx-auto h-[28px]" />
-                                    </a>
-
-                                    <a href="#" onClick={(e) => { e.preventDefault(); openExternal('https://link.trustwallet.com/send?asset=c0&address=bc1q5pt7m2fk6w0dzsnf6vvd5k6nw5k44785286ujy'); }} className="block hover:opacity-80 transition-opacity">
-                                        <img src="https://img.shields.io/badge/Donate-BTC-F7931A?style=for-the-badge&logo=bitcoin&logoColor=white" alt="Donate BTC" className="mx-auto h-[28px]" />
-                                    </a>
+                                    <button
+                                        onClick={() => openExternal('https://github.com/sachinmandawi')}
+                                        className="w-full px-4 py-3 rounded-lg bg-telegram-hover text-telegram-text font-semibold hover:bg-telegram-border transition-colors"
+                                    >
+                                        Maintainer Profile
+                                    </button>
                                 </div>
                             </div>
                         </motion.div>

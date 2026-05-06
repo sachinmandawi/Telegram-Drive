@@ -1,8 +1,11 @@
 [package]
 name = "app"
 version = "1.1.10"
-description = "A Tauri App"
-authors = ["you"]
+description = "Telegram Drive browser and desktop storage app owned by Sachin Mandavi."
+authors = ["Sachin Mandavi <197530811+sachinmandawi@users.noreply.github.com>"]
+license = "MIT"
+repository = "https://github.com/sachinmandawi/Telegram-Drive"
+homepage = "https://github.com/sachinmandawi/Telegram-Drive"
 edition = "2021"
 
 
@@ -43,4 +46,3 @@ async-stream = "0.3"
 actix-rt = "2"
 tauri-plugin-process = "2.3.1"
 rand = "0.8"
-
