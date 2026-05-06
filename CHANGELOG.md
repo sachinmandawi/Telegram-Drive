@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.11] - 2026-05-06
+
+### Fixes
+
+- Stabilized Telegram Saved Messages uploads by throttling Telegram file sends and retrying transient failures.
+- Moved manifest/index sync to debounced background writes so successful file uploads are not marked as failed.
+- Added detailed upload error text in the queue to make failed files easier to diagnose.
+- Refreshed website, desktop app, and release artifacts for the upload fix.
+
+---
+
 ## [1.1.10] - 2026-05-06
 
 ### Fixes

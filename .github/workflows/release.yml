@@ -32,7 +32,7 @@ jobs:
               repo: context.repo.repo,
               tag_name: `v${{ steps.get_version.outputs.VERSION }}`,
               name: `Telegram Drive v${{ steps.get_version.outputs.VERSION }}`,
-              body: `Telegram Drive now defaults to Telegram Saved Messages storage, keeps folders and file metadata persistent across reinstalls, and includes browser/desktop sync, folder upload, trash, starred files, and repair tools.\n\nSee the assets below to download and install.`,
+              body: `Telegram Drive now includes stabilized Saved Messages uploads, debounced manifest sync, persistent folders and file metadata across reinstalls, browser/desktop sync, folder upload, trash, starred files, and repair tools.\n\nSee the assets below to download and install.`,
               draft: true,
               prerelease: false
             });
