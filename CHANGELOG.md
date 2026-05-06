@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.1] - 2026-05-06
+
+### Updater Release Metadata
+
+- Enabled signed updater artifacts in the Tauri bundle configuration.
+- Updated the GitHub release workflow to publish `latest.json` for the in-app updater endpoint.
+- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.1.
+
 ## [1.1.0] - 2026-05-06
 
 ### Major Feature Update

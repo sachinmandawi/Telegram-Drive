@@ -112,6 +112,7 @@ jobs:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           projectPath: ./app
           args: ${{ matrix.args }}
+          includeUpdaterJson: true
 
       - name: Patch AppImage for cross-distro EGL compatibility
         if: matrix.platform == 'ubuntu-22.04'
