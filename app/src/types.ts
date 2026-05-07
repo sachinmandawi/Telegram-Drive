@@ -12,6 +12,10 @@ export interface TelegramFile {
     starred?: boolean;
     pinned?: boolean;
     color?: string;
+    locked?: boolean;
+    protected?: boolean;
+    protectionHash?: string;
+    protectionHint?: string;
     trashed?: boolean;
     deletedAt?: string;
     missing?: boolean;
@@ -38,9 +42,34 @@ export interface TelegramFolder {
     starred?: boolean;
     pinned?: boolean;
     color?: string;
+    locked?: boolean;
+    protected?: boolean;
+    protectionHash?: string;
+    protectionHint?: string;
     size?: number;
     sizeStr?: string;
     itemCount?: number;
+}
+
+export interface DriveHealthWarning {
+    id: number;
+    name: string;
+    size: number;
+    sizeStr: string;
+    category: string;
+    severity: 'info' | 'warning' | 'danger';
+    created_at?: string;
+}
+
+export interface RecoveryItem {
+    id: number;
+    name: string;
+    size: number;
+    sizeStr: string;
+    status: 'pending' | 'failed' | 'missing' | 'trash' | 'protected';
+    itemType?: 'file' | 'folder' | 'operation';
+    error?: string;
+    created_at?: string;
 }
 
 export interface QueueItem {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, Star, RotateCcw, Tag, ShieldCheck, Pin, History } from 'lucide-react';
+import { Copy, Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, Star, RotateCcw, Tag, Shield, ShieldCheck, ShieldOff, Pin, History, Lock, UnlockKeyhole, Combine } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { isMediaFile, isPdfFile } from '../../utils';
 
@@ -19,9 +19,13 @@ interface ContextMenuProps {
     onTogglePin?: () => void;
     onSetFolderColor?: (color: string) => void;
     onShowVersions?: () => void;
+    onCopy?: () => void;
+    onMergeFolder?: () => void;
+    onToggleLock?: () => void;
+    onToggleProtection?: () => void;
 }
 
-export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onToggleStar, onRestore, onEditTags, onVerify, onRename, onTogglePin, onSetFolderColor, onShowVersions }: ContextMenuProps) {
+export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onToggleStar, onRestore, onEditTags, onVerify, onRename, onTogglePin, onSetFolderColor, onShowVersions, onCopy, onMergeFolder, onToggleLock, onToggleProtection }: ContextMenuProps) {
     const [adjustedPos, setAdjustedPos] = useState({ x, y });
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -116,6 +120,34 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
                 <button onClick={onTogglePin} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
                     <Pin className={`w-4 h-4 ${file.pinned ? 'text-telegram-primary fill-telegram-primary' : 'text-telegram-primary'}`} />
                     {file.pinned ? 'Unpin' : 'Pin'}
+                </button>
+            )}
+
+            {onCopy && !file.trashed && (
+                <button onClick={onCopy} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
+                    <Copy className="w-4 h-4 text-telegram-primary" />
+                    Make a Copy
+                </button>
+            )}
+
+            {file.type === 'folder' && onMergeFolder && !file.trashed && (
+                <button onClick={onMergeFolder} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
+                    <Combine className="w-4 h-4 text-telegram-primary" />
+                    Merge into...
+                </button>
+            )}
+
+            {onToggleLock && !file.trashed && (
+                <button onClick={onToggleLock} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
+                    {file.locked ? <UnlockKeyhole className="w-4 h-4 text-green-400" /> : <Lock className="w-4 h-4 text-amber-400" />}
+                    {file.locked ? 'Unlock Edits' : 'Lock Edits'}
+                </button>
+            )}
+
+            {onToggleProtection && !file.trashed && (
+                <button onClick={onToggleProtection} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
+                    {file.protected ? <ShieldOff className="w-4 h-4 text-green-400" /> : <Shield className="w-4 h-4 text-telegram-primary" />}
+                    {file.protected ? 'Remove Protection' : 'Protect with PIN'}
                 </button>
             )}
 

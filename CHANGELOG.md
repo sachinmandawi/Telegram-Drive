@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.8] - 2026-05-07
+
+### Drive-Style Safety & Recovery Pack
+
+- Added Make a Copy for files and folders, including folder-tree copy with copied files uploaded into the new structure.
+- Added conflict strategies for moving items: keep both, replace, skip, and merge folders.
+- Added folder merge flow from the context menu and Google Drive-style create-folder actions in the toolbar, empty state, grid upload tile, and list upload row.
+- Added locked items and PIN-protected items with visible badges and unlock prompts before open, move, rename, copy, or delete actions.
+- Added a local sync operation queue, Storage Health warnings, and Recovery Center actions in Drive Tools.
+- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.8.
+
 ## [1.1.7] - 2026-05-07
 
 ### Browser Upload Hotfix

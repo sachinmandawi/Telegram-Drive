@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
     ArchiveRestore,
+    AlertTriangle,
     BarChart3,
     CheckCircle2,
     Database,
     Download,
     HardDriveDownload,
+    LifeBuoy,
     RefreshCw,
     ShieldCheck,
     Trash2,
@@ -15,7 +17,7 @@ import {
     X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { DriveStats, OfflineCacheStats, TelegramAccountInfo } from '../../types';
+import type { DriveHealthWarning, DriveStats, OfflineCacheStats, RecoveryItem, TelegramAccountInfo } from '../../types';
 import { formatBytes } from '../../utils';
 import { invokeCommand, openExternal } from '../../platform';
 import { useUpdateCheck } from '../../hooks/useUpdateCheck';
@@ -52,24 +54,30 @@ export function DriveToolsModal({
     const [accounts, setAccounts] = useState<TelegramAccountInfo[]>([]);
     const [activity, setActivity] = useState<{ id: number; name: string; sizeStr: string; created_at?: string }[]>([]);
     const [cleanup, setCleanup] = useState<{ id: number; name: string; sizeStr: string }[]>([]);
+    const [health, setHealth] = useState<DriveHealthWarning[]>([]);
+    const [recovery, setRecovery] = useState<RecoveryItem[]>([]);
     const [retentionDays, setRetentionDays] = useState(30);
     const [busy, setBusy] = useState<string | null>(null);
     const importInputRef = useRef<HTMLInputElement>(null);
     const update = useUpdateCheck();
 
     const refresh = async () => {
-        const [nextStats, nextCache, nextAccounts, nextActivity, nextCleanup] = await Promise.all([
+        const [nextStats, nextCache, nextAccounts, nextActivity, nextCleanup, nextHealth, nextRecovery] = await Promise.all([
             invokeCommand<DriveStats>('cmd_get_drive_stats'),
             invokeCommand<OfflineCacheStats>('cmd_get_offline_cache_stats'),
             invokeCommand<TelegramAccountInfo[]>('cmd_list_accounts').catch(() => []),
             invokeCommand<{ id: number; name: string; sizeStr: string; created_at?: string }[]>('cmd_get_activity_items').catch(() => []),
             invokeCommand<{ id: number; name: string; sizeStr: string }[]>('cmd_get_cleanup_suggestions').catch(() => []),
+            invokeCommand<DriveHealthWarning[]>('cmd_get_storage_health').catch(() => []),
+            invokeCommand<RecoveryItem[]>('cmd_get_recovery_items').catch(() => []),
         ]);
         setStats(nextStats);
         setCacheStats(nextCache);
         setAccounts(nextAccounts);
         setActivity(nextActivity);
         setCleanup(nextCleanup);
+        setHealth(nextHealth);
+        setRecovery(nextRecovery);
         setRetentionDays(nextStats.trashRetentionDays || 30);
     };
 
@@ -118,6 +126,17 @@ export function DriveToolsModal({
     const clearCache = () => runBusy('cache', async () => {
         await invokeCommand('cmd_clear_offline_cache');
         toast.success('Offline cache cleared.');
+    });
+
+    const repairIndex = () => runBusy('repair', async () => {
+        await invokeCommand('cmd_repair_manifest');
+        await invokeCommand('cmd_flush_manifest').catch(() => undefined);
+        toast.success('Recovery repair completed.');
+    });
+
+    const flushManifest = () => runBusy('flush', async () => {
+        await invokeCommand('cmd_flush_manifest');
+        toast.success('Cloud manifest saved.');
     });
 
     const switchAccount = (accountId: string) => runBusy(`account:${accountId}`, async () => {
@@ -213,6 +232,42 @@ export function DriveToolsModal({
                             />
                         </div>
                         <p className="mt-3 text-xs text-telegram-subtext">Cloud manifest merges keep newer file metadata, folders, and event history.</p>
+                    </section>
+
+                    <section className="rounded-lg border border-telegram-border p-4">
+                        <Header icon={<AlertTriangle className="h-4 w-4" />} title="Storage Health" action={<button onClick={() => refresh()} className="text-telegram-subtext hover:text-telegram-text"><RefreshCw className="h-4 w-4" /></button>} />
+                        <div className="mt-3 space-y-2">
+                            {health.slice(0, 6).map((item) => (
+                                <div key={item.id} className={`rounded-md px-3 py-2 text-xs ${item.severity === 'danger' ? 'bg-red-500/10 text-red-300' : item.severity === 'warning' ? 'bg-yellow-500/10 text-yellow-300' : 'bg-telegram-hover text-telegram-subtext'}`}>
+                                    <div className="truncate font-medium text-telegram-text">{item.name}</div>
+                                    <div>{item.category} - {item.sizeStr}</div>
+                                </div>
+                            ))}
+                            {health.length === 0 && <p className="text-sm text-telegram-subtext">Health scan is waiting for data.</p>}
+                        </div>
+                    </section>
+
+                    <section className="rounded-lg border border-telegram-border p-4">
+                        <Header icon={<LifeBuoy className="h-4 w-4" />} title="Recovery Center" />
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <button onClick={repairIndex} disabled={busy === 'repair'} className="tool-btn">
+                                <RefreshCw className="h-4 w-4" />
+                                Repair Index
+                            </button>
+                            <button onClick={flushManifest} disabled={busy === 'flush'} className="tool-btn">
+                                <Upload className="h-4 w-4" />
+                                Save Manifest
+                            </button>
+                        </div>
+                        <div className="mt-3 max-h-44 space-y-2 overflow-auto pr-1">
+                            {recovery.slice(0, 8).map((item) => (
+                                <div key={item.id} className="rounded-md bg-telegram-hover px-3 py-2 text-xs text-telegram-subtext">
+                                    <div className="truncate text-telegram-text">{item.name}</div>
+                                    <div>{item.sizeStr}{item.error ? ` - ${item.error}` : ''}</div>
+                                </div>
+                            ))}
+                            {recovery.length === 0 && <p className="text-sm text-telegram-subtext">No recovery issues found.</p>}
+                        </div>
                     </section>
 
                     <section className="rounded-lg border border-telegram-border p-4">

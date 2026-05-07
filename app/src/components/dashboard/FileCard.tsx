@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
-import { Folder, Eye, Trash2, Star, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Folder, Eye, Trash2, Star, Shield, ShieldAlert, ShieldCheck, Lock } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { FileTypeIcon } from '../FileTypeIcon';
 import { invokeCommand } from '../../platform';
@@ -149,14 +149,26 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
                     </div>
                 )}
 
-                {!isFolder && file.integrityStatus === 'valid' && (
+                {file.locked && (
                     <div className="absolute top-2 left-16 w-5 h-5 rounded-full bg-black/40 flex items-center justify-center z-10">
+                        <Lock className="w-3 h-3 text-amber-400" />
+                    </div>
+                )}
+
+                {file.protected && (
+                    <div className="absolute top-2 left-[5.75rem] w-5 h-5 rounded-full bg-black/40 flex items-center justify-center z-10">
+                        <Shield className="w-3 h-3 text-telegram-primary" />
+                    </div>
+                )}
+
+                {!isFolder && file.integrityStatus === 'valid' && (
+                    <div className="absolute top-2 left-[7.5rem] w-5 h-5 rounded-full bg-black/40 flex items-center justify-center z-10">
                         <ShieldCheck className="w-3 h-3 text-green-400" />
                     </div>
                 )}
 
                 {!isFolder && file.integrityStatus === 'mismatch' && (
-                    <div className="absolute top-2 left-16 w-5 h-5 rounded-full bg-black/40 flex items-center justify-center z-10">
+                    <div className="absolute top-2 left-[7.5rem] w-5 h-5 rounded-full bg-black/40 flex items-center justify-center z-10">
                         <ShieldAlert className="w-3 h-3 text-red-400" />
                     </div>
                 )}

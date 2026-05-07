@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Plus, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, ArrowUpDown, ArrowUp, ArrowDown, FolderPlus } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { FileCard } from './FileCard';
 import { EmptyState } from './EmptyState';
@@ -23,6 +23,7 @@ interface FileExplorerProps {
     onPreview: (file: TelegramFile, orderedFiles?: TelegramFile[]) => void;
     onManualUpload: () => void;
     onManualFolderUpload?: () => void;
+    onCreateFolder?: () => void;
     allowUpload?: boolean;
     onSelectionClear: () => void;
     onToggleSelection: (id: number) => void;
@@ -37,6 +38,10 @@ interface FileExplorerProps {
     onTogglePin?: (file: TelegramFile) => void;
     onSetFolderColor?: (file: TelegramFile, color: string) => void;
     onShowVersions?: (file: TelegramFile) => void;
+    onCopy?: (file: TelegramFile) => void;
+    onMergeFolder?: (file: TelegramFile) => void;
+    onToggleLock?: (file: TelegramFile) => void;
+    onToggleProtection?: (file: TelegramFile) => void;
 }
 
 
@@ -68,7 +73,7 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
 
 export function FileExplorer({
     files, loading, error, viewMode, selectedIds, activeFolderId,
-    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onToggleStar, onRestore, onEditTags, onVerify, onRename, onTogglePin, onSetFolderColor, onShowVersions
+    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onToggleStar, onRestore, onEditTags, onVerify, onRename, onTogglePin, onSetFolderColor, onShowVersions, onCopy, onMergeFolder, onToggleLock, onToggleProtection
 }: FileExplorerProps) {
     const [sortField, setSortField] = useState<SortField>('name');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -122,8 +127,8 @@ export function FileExplorer({
 
 
     const listItems = useMemo(() => {
-        return allowUpload && activeFolderId === null ? [...sortedFiles, 'upload' as const] : sortedFiles;
-    }, [sortedFiles, activeFolderId, allowUpload]);
+        return allowUpload ? [...sortedFiles, 'upload' as const] : sortedFiles;
+    }, [sortedFiles, allowUpload]);
 
 
     const gridVirtualizer = useVirtualizer({
@@ -185,7 +190,7 @@ export function FileExplorer({
         }
         return (
             <div className="flex-1 p-6 overflow-auto">
-                <EmptyState onUpload={onManualUpload} onUploadFolder={onManualFolderUpload} />
+                <EmptyState onUpload={onManualUpload} onUploadFolder={onManualFolderUpload} onCreateFolder={onCreateFolder} />
             </div>
         );
     }
@@ -264,6 +269,14 @@ export function FileExplorer({
                                                             Upload Folder
                                                         </button>
                                                     )}
+                                                    {onCreateFolder && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); onCreateFolder(); }}
+                                                            className="text-xs font-medium text-telegram-subtext hover:text-telegram-primary"
+                                                        >
+                                                            Create Folder
+                                                        </button>
+                                                    )}
                                                 </div>
                                             );
                                         }
@@ -322,7 +335,7 @@ export function FileExplorer({
                                         className="absolute top-0 left-0 w-full"
                                         style={{ transform: `translateY(${virtualItem.start}px)` }}
                                     >
-                                        <div className={`grid gap-2 ${onManualFolderUpload ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                                        <div className={`grid gap-2 ${onManualFolderUpload || onCreateFolder ? 'grid-cols-3' : 'grid-cols-1'}`}>
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); onManualUpload(); }}
                                                 className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer border border-dashed border-telegram-border text-telegram-subtext hover:text-telegram-text hover:bg-telegram-hover w-full"
@@ -337,6 +350,15 @@ export function FileExplorer({
                                                 >
                                                     <div className="w-5 h-5 flex items-center justify-center"><Plus className="w-4 h-4" /></div>
                                                     <span className="text-sm font-medium">Upload Folder...</span>
+                                                </button>
+                                            )}
+                                            {onCreateFolder && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); onCreateFolder(); }}
+                                                    className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer border border-dashed border-telegram-border text-telegram-subtext hover:text-telegram-text hover:bg-telegram-hover w-full"
+                                                >
+                                                    <div className="w-5 h-5 flex items-center justify-center"><FolderPlus className="w-4 h-4" /></div>
+                                                    <span className="text-sm font-medium">Create Folder...</span>
                                                 </button>
                                             )}
                                         </div>
@@ -417,6 +439,22 @@ export function FileExplorer({
                     } : undefined}
                     onShowVersions={onShowVersions ? () => {
                         onShowVersions(contextMenu.file);
+                        setContextMenu(null);
+                    } : undefined}
+                    onCopy={onCopy ? () => {
+                        onCopy(contextMenu.file);
+                        setContextMenu(null);
+                    } : undefined}
+                    onMergeFolder={onMergeFolder ? () => {
+                        onMergeFolder(contextMenu.file);
+                        setContextMenu(null);
+                    } : undefined}
+                    onToggleLock={onToggleLock ? () => {
+                        onToggleLock(contextMenu.file);
+                        setContextMenu(null);
+                    } : undefined}
+                    onToggleProtection={onToggleProtection ? () => {
+                        onToggleProtection(contextMenu.file);
                         setContextMenu(null);
                     } : undefined}
                 />

@@ -10,6 +10,7 @@ import { formatBytes } from './utils';
 import {
     telegramCheckPassword,
     telegramConnect,
+    telegramCopyItem,
     telegramCreateFolder,
     telegramDeleteFolder,
     telegramDeleteFile,
@@ -21,10 +22,12 @@ import {
     telegramGetActivityItems,
     telegramGetCleanupSuggestions,
     telegramGetFileVersions,
+    telegramGetRecoveryItems,
     telegramGetOfflineCacheStats,
     telegramGetObjectUrl,
     telegramGetQuickAccessItems,
     telegramGetRecentItems,
+    telegramGetStorageHealth,
     telegramGetStarredFiles,
     telegramGetTrashFiles,
     telegramExportManifest,
@@ -46,12 +49,15 @@ import {
     telegramRestoreFile,
     telegramSearchFiles,
     telegramSetFolderColor,
+    telegramSetItemProtection,
     telegramSetTrashRetention,
     telegramSignIn,
     telegramSetFileTags,
     telegramSwitchAccount,
     telegramToggleStarItem,
+    telegramToggleLockItem,
     telegramTogglePinItem,
+    telegramUnlockProtectedItem,
     telegramUploadFile,
     telegramVerifyFile,
 } from './telegramBrowser';
@@ -204,6 +210,8 @@ async function invokeTauriCommand<T>(invoke: TauriInvokeFn, command: string, arg
         case 'cmd_get_activity_items':
         case 'cmd_get_cleanup_suggestions':
         case 'cmd_get_file_versions':
+        case 'cmd_get_storage_health':
+        case 'cmd_get_recovery_items':
             return [] as T;
         case 'cmd_restore_file':
             forgetLegacyTrash(Number(args.messageId));
@@ -239,6 +247,10 @@ async function invokeTauriCommand<T>(invoke: TauriInvokeFn, command: string, arg
         case 'cmd_move_folders':
         case 'cmd_rename_item':
         case 'cmd_toggle_pin':
+        case 'cmd_toggle_lock':
+        case 'cmd_set_protection':
+        case 'cmd_unlock_item':
+        case 'cmd_copy_item':
         case 'cmd_set_folder_color':
             return true as T;
         case 'cmd_get_starred_files':
@@ -539,6 +551,10 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
         case 'cmd_move_folders':
         case 'cmd_rename_item':
         case 'cmd_toggle_pin':
+        case 'cmd_toggle_lock':
+        case 'cmd_set_protection':
+        case 'cmd_unlock_item':
+        case 'cmd_copy_item':
         case 'cmd_set_folder_color':
             return true as T;
         case 'cmd_search_global':
@@ -550,6 +566,8 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
         case 'cmd_get_activity_items':
         case 'cmd_get_cleanup_suggestions':
         case 'cmd_get_file_versions':
+        case 'cmd_get_storage_health':
+        case 'cmd_get_recovery_items':
             return [] as T;
         case 'cmd_set_trash_retention':
             return true as T;
@@ -611,6 +629,10 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
             return await telegramGetActivityItems(Number(args.limit) || 80) as T;
         case 'cmd_get_cleanup_suggestions':
             return await telegramGetCleanupSuggestions() as T;
+        case 'cmd_get_storage_health':
+            return await telegramGetStorageHealth() as T;
+        case 'cmd_get_recovery_items':
+            return await telegramGetRecoveryItems() as T;
         case 'cmd_get_file_versions':
             return await telegramGetFileVersions(Number(args.messageId)) as T;
         case 'cmd_export_manifest':
@@ -666,6 +688,32 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
                 args.itemType === 'folder' ? 'folder' : 'file',
                 typeof args.pinned === 'boolean' ? args.pinned : undefined
             ) as T;
+        case 'cmd_toggle_lock':
+            return await telegramToggleLockItem(
+                Number(args.messageId),
+                args.itemType === 'folder' ? 'folder' : 'file',
+                typeof args.locked === 'boolean' ? args.locked : undefined
+            ) as T;
+        case 'cmd_set_protection':
+            return await telegramSetItemProtection(
+                Number(args.messageId),
+                args.itemType === 'folder' ? 'folder' : 'file',
+                String(args.pin || ''),
+                typeof args.protectionHint === 'string' ? args.protectionHint : undefined,
+                args.protected === false ? false : true
+            ) as T;
+        case 'cmd_unlock_item':
+            return await telegramUnlockProtectedItem(
+                Number(args.messageId),
+                args.itemType === 'folder' ? 'folder' : 'file',
+                String(args.pin || '')
+            ) as T;
+        case 'cmd_copy_item':
+            return await telegramCopyItem(
+                Number(args.messageId),
+                args.itemType === 'folder' ? 'folder' : 'file',
+                args.targetFolderId === undefined ? undefined : ((args.targetFolderId as number | null | undefined) ?? null)
+            ) as T;
         case 'cmd_set_folder_color':
             return await telegramSetFolderColor(Number(args.folderId), String(args.color || '')) as T;
         case 'cmd_rename_item':
@@ -701,12 +749,14 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
         case 'cmd_move_files':
             return await telegramMoveFiles(
                 (args.messageIds as number[] | undefined) || [],
-                (args.targetFolderId as number | null | undefined) ?? null
+                (args.targetFolderId as number | null | undefined) ?? null,
+                args.conflictStrategy as 'keep_both' | 'replace' | 'skip' | 'merge' | undefined
             ) as T;
         case 'cmd_move_folders':
             return await telegramMoveFolders(
                 (args.folderIds as number[] | undefined) || [],
-                (args.targetParentId as number | null | undefined) ?? null
+                (args.targetParentId as number | null | undefined) ?? null,
+                args.conflictStrategy as 'keep_both' | 'replace' | 'skip' | 'merge' | undefined
             ) as T;
         case 'cmd_get_stream_info':
             return ({ token: 'browser-telegram', base_url: '' } satisfies StreamInfo) as T;

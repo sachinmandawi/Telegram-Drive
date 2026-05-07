@@ -1,4 +1,4 @@
-import { CheckSquare, HardDrive, LayoutGrid, Sun, Moon, Wrench, SlidersHorizontal, Tag, Star, X } from 'lucide-react';
+import { CheckSquare, FolderPlus, HardDrive, LayoutGrid, Sun, Moon, Wrench, SlidersHorizontal, Tag, Star, X } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 
 interface TopBarProps {
@@ -10,6 +10,7 @@ interface TopBarProps {
     allSelected: boolean;
     selectableCount: number;
     onShowMoveModal: () => void;
+    onCreateFolder?: () => void;
     onBulkDownload: () => void;
     onBulkDelete: () => void;
     onBulkRestore?: () => void;
@@ -32,7 +33,7 @@ export function TopBar({
     currentFolderName, selectedIds, onShowMoveModal, onBulkDownload, onBulkDelete,
     onDownloadFolder, onBulkTag, onBulkStar, onOpenTools, viewMode, setViewMode, searchTerm, onSearchChange, savedMessagesOnly = false,
     onRepairDrive, isRepairing = false, onSelectAll, onClearSelection, allSelected, selectableCount, breadcrumbs, onBulkRestore,
-    searchScope, onSearchScopeChange
+    searchScope, onSearchScopeChange, onCreateFolder
 }: TopBarProps) {
     const { theme, toggleTheme } = useTheme();
 
@@ -104,6 +105,15 @@ export function TopBar({
                         Download All Files
                     </span>
                 </button>
+
+                {onCreateFolder && (
+                    <button onClick={onCreateFolder} className="p-2 hover:bg-telegram-hover rounded-md text-telegram-subtext hover:text-telegram-text transition group relative" title="Create Folder">
+                        <FolderPlus className="w-5 h-5" />
+                        <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-[10px] bg-telegram-surface border border-telegram-border px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
+                            Create Folder
+                        </span>
+                    </button>
+                )}
 
                 {onRepairDrive && (
                     <button

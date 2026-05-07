@@ -31,6 +31,8 @@ import { useWatchFolderSync } from '../hooks/useWatchFolderSync';
 import { invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime } from '../platform';
 import { useConfirm } from '../context/ConfirmContext';
 
+type MoveConflictStrategy = 'keep_both' | 'replace' | 'skip' | 'merge';
+
 export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const queryClient = useQueryClient();
     const { confirm } = useConfirm();
@@ -52,6 +54,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const [searchScope, setSearchScope] = useState<'current' | 'drive'>('current');
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
     const [showMoveModal, setShowMoveModal] = useState(false);
+    const [moveConflictStrategy, setMoveConflictStrategy] = useState<MoveConflictStrategy>('keep_both');
+    const [unlockedProtectedIds, setUnlockedProtectedIds] = useState<Set<string>>(() => new Set());
     const [searchTerm, setSearchTerm] = useState("");
     const [searchResults, setSearchResults] = useState<TelegramFile[]>([]);
     const [isSearching, setIsSearching] = useState(false);
@@ -169,6 +173,27 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         setSelectedIds(selectableIds);
     }, [selectableIds]);
 
+    const ensureProtectedAccess = useCallback(async (item: TelegramFile, action: string) => {
+        if (!item.protected) return true;
+        const key = protectedItemKey(item);
+        if (unlockedProtectedIds.has(key)) return true;
+        const hint = item.protectionHint ? `\nHint: ${item.protectionHint}` : '';
+        const pin = window.prompt(`Enter PIN to ${action} "${item.name}".${hint}`);
+        if (!pin) return false;
+        try {
+            await invokeCommand('cmd_unlock_item', { messageId: item.id, itemType: item.type || 'file', pin });
+            setUnlockedProtectedIds((current) => {
+                const next = new Set(current);
+                next.add(key);
+                return next;
+            });
+            return true;
+        } catch (e) {
+            toast.error(`Unlock failed: ${e}`);
+            return false;
+        }
+    }, [unlockedProtectedIds]);
+
     async function restoreItems(items: TelegramFile[]) {
         let restored = 0;
         let failed = 0;
@@ -191,6 +216,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
         const selectedItems = displayedFiles.filter((item) => selectedIds.includes(item.id));
         if (selectedItems.length === 0) return;
+        for (const item of selectedItems) {
+            if (!await ensureProtectedAccess(item, driveView === 'trash' ? 'delete forever' : 'delete')) return;
+        }
 
         if (driveView === 'trash') {
             const ok = await confirm({
@@ -270,22 +298,28 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 });
             }
             if (fail > 0) toast.error(`Failed to move ${fail} item(s).`);
-    }, [activeFolderId, confirm, displayedFiles, driveView, handleBulkDelete, handleSyncFolders, queryClient, savedMessagesDefault, selectedIds]);
+    }, [activeFolderId, confirm, displayedFiles, driveView, ensureProtectedAccess, handleBulkDelete, handleSyncFolders, queryClient, savedMessagesDefault, selectedIds]);
 
     const handleMoveSelection = useCallback(async (targetFolderId: number | null) => {
         const selectedItems = displayedFiles.filter((item) => selectedIds.includes(item.id));
         if (selectedItems.length === 0) return;
+        for (const item of selectedItems) {
+            if (!await ensureProtectedAccess(item, 'move')) return;
+        }
         const files = selectedItems.filter((item) => item.type !== 'folder').map((item) => item.id);
         const folderIds = selectedItems.filter((item) => item.type === 'folder').map((item) => item.id);
+        const conflictStrategy = resolveMoveConflictStrategy(selectedItems, folders, targetFolderId, moveConflictStrategy);
+        if (!conflictStrategy) return;
         try {
             if (files.length > 0) {
-                await invokeCommand('cmd_move_files', { messageIds: files, targetFolderId });
+                await invokeCommand('cmd_move_files', { messageIds: files, targetFolderId, conflictStrategy });
             }
             if (folderIds.length > 0) {
-                await invokeCommand('cmd_move_folders', { folderIds, targetParentId: targetFolderId });
+                await invokeCommand('cmd_move_folders', { folderIds, targetParentId: targetFolderId, conflictStrategy });
             }
             if (savedMessagesDefault) await invokeCommand('cmd_flush_manifest').catch(() => undefined);
             setShowMoveModal(false);
+            setMoveConflictStrategy('keep_both');
             setSelectedIds([]);
             queryClient.invalidateQueries({ queryKey: ['files'] });
             await handleSyncFolders();
@@ -293,7 +327,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         } catch (e) {
             toast.error(`Move failed: ${e}`);
         }
-    }, [displayedFiles, handleSyncFolders, queryClient, savedMessagesDefault, selectedIds]);
+    }, [displayedFiles, ensureProtectedAccess, folders, handleSyncFolders, moveConflictStrategy, queryClient, savedMessagesDefault, selectedIds]);
 
     const handleKeyboardDelete = useCallback(() => {
         if (selectedIds.length > 0) {
@@ -318,7 +352,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }, []);
 
     const handleEnter = useCallback(() => {
-        if (selectedIds.length === 1) {
+        void (async () => {
+            if (selectedIds.length !== 1) return;
             const selected = displayedFiles.find(f => f.id === selectedIds[0]);
             if (selected) {
                 if (selected.type === 'folder') {
@@ -327,13 +362,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                         setTrashBreadcrumbs((items) => [...items, { id: selected.id, name: selected.name }]);
                         return;
                     }
+                    if (!await ensureProtectedAccess(selected, 'open')) return;
                     setActiveFolderId(selected.id);
                 } else {
                     handlePreview(selected, displayedFiles);
                 }
             }
-        }
-    }, [driveView, selectedIds, displayedFiles, setActiveFolderId]);
+        })();
+    }, [driveView, ensureProtectedAccess, selectedIds, displayedFiles, setActiveFolderId]);
 
     useKeyboardShortcuts({
         onSelectAll: handleSelectAll,
@@ -348,6 +384,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     useEffect(() => {
         setSelectedIds([]);
         setShowMoveModal(false);
+        setMoveConflictStrategy('keep_both');
         setSearchTerm("");
         setSearchResults([]);
         setPreviewFile(null);
@@ -399,7 +436,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
 
 
-    const handleFileClick = (e: React.MouseEvent, id: number) => {
+    const handleFileClick = async (e: React.MouseEvent, id: number) => {
         e.stopPropagation();
         const clicked = displayedFiles.find(f => f.id === id);
         if (e.metaKey || e.ctrlKey) {
@@ -413,6 +450,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 setSelectedIds([]);
                 return;
             }
+            if (!await ensureProtectedAccess(clicked, 'open')) return;
             setActiveFolderId(id);
         } else {
             setSelectedIds([id]);
@@ -423,7 +461,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         setSelectedIds(ids => ids.includes(id) ? ids.filter(i => i !== id) : [...ids, id]);
     }, []);
 
-    const handlePreview = (file: TelegramFile, orderedFiles?: TelegramFile[]) => {
+    const handlePreview = async (file: TelegramFile, orderedFiles?: TelegramFile[]) => {
         if (file.type === 'folder') {
             if (driveView === 'trash' || file.trashed) {
                 setActiveTrashFolderId(file.id);
@@ -431,6 +469,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 setSelectedIds([]);
                 return;
             }
+            if (!await ensureProtectedAccess(file, 'open')) return;
             setActiveFolderId(file.id);
             return;
         }
@@ -539,17 +578,21 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 const draggedItem = displayedFiles.find((item) => item.id === fileId);
                 const idsToMove = selectedIds.includes(fileId) ? selectedIds : [fileId];
                 const selectedItems = displayedFiles.filter((item) => idsToMove.includes(item.id));
+                for (const item of selectedItems) {
+                    if (!await ensureProtectedAccess(item, 'move')) return;
+                }
                 const folderIds = selectedItems.filter((item) => item.type === 'folder').map((item) => item.id);
                 const messageIds = selectedItems.filter((item) => item.type !== 'folder').map((item) => item.id);
 
                 if (draggedItem?.type === 'folder' || folderIds.length > 0) {
-                    await invokeCommand('cmd_move_folders', { folderIds, targetParentId: targetFolderId });
+                    await invokeCommand('cmd_move_folders', { folderIds, targetParentId: targetFolderId, conflictStrategy: 'keep_both' });
                 }
                 if (messageIds.length > 0) {
                     await invokeCommand('cmd_move_files', {
                         messageIds,
                         sourceFolderId: activeFolderId,
-                        targetFolderId: targetFolderId
+                        targetFolderId: targetFolderId,
+                        conflictStrategy: 'keep_both'
                     });
                 }
 
@@ -584,8 +627,18 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 ? "Saved Messages"
                 : getFolderPath(activeFolderId, folders) || "Folder";
 
+    const handleOpenFolderId = useCallback(async (id: number | null) => {
+        if (id === null) {
+            await setActiveFolderId(null);
+            return;
+        }
+        const folder = folders.find((item) => item.id === id);
+        if (folder && !await ensureProtectedAccess(folderToExplorerItem(folder), 'open')) return;
+        await setActiveFolderId(id);
+    }, [ensureProtectedAccess, folders, setActiveFolderId]);
+
     const breadcrumbs = useMemo(() => {
-        const start = { label: 'Start', onClick: () => { setDriveView('files'); setActiveFolderId(null); } };
+        const start = { label: 'Start', onClick: () => { setDriveView('files'); void handleOpenFolderId(null); } };
         if (driveView === 'trash') {
             return [
                 start,
@@ -604,10 +657,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             start,
             ...getFolderBreadcrumbs(activeFolderId, folders).map((item) => ({
                 label: item.name,
-                onClick: () => setActiveFolderId(item.id),
+                onClick: () => { void handleOpenFolderId(item.id); },
             })),
         ];
-    }, [activeFolderId, currentFolderName, driveView, folders, setActiveFolderId, trashBreadcrumbs]);
+    }, [activeFolderId, currentFolderName, driveView, folders, handleOpenFolderId, trashBreadcrumbs]);
 
 
     const handleRootDragOver = (e: React.DragEvent) => {
@@ -676,12 +729,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const handleExplorerDelete = useCallback(async (id: number) => {
         const folder = folders.find(f => f.id === id);
         if (folder) {
+            if (!await ensureProtectedAccess(folderToExplorerItem(folder), 'delete')) return;
             handleFolderDelete(folder.id, folder.name);
             return;
         }
         if (driveView === 'trash') {
             const file = displayedFiles.find(f => f.id === id);
             if (!file) return;
+            if (!await ensureProtectedAccess(file, 'delete forever')) return;
             const ok = await confirm({
                 title: "Delete Forever",
                 message: `Permanently delete "${file.name}"? This cannot be restored by Telegram Drive.`,
@@ -699,8 +754,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             }
             return;
         }
+        const file = displayedFiles.find(f => f.id === id);
+        if (file && !await ensureProtectedAccess(file, 'delete')) return;
         handleDelete(id);
-    }, [confirm, displayedFiles, driveView, folders, handleDelete, handleFolderDelete, handleSyncFolders, queryClient]);
+    }, [confirm, displayedFiles, driveView, ensureProtectedAccess, folders, handleDelete, handleFolderDelete, handleSyncFolders, queryClient]);
 
     const handleExplorerDownload = useCallback((id: number, name: string) => {
         const item = displayedFiles.find(f => f.id === id);
@@ -709,12 +766,15 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 toast.info("Restore the folder before downloading its contents.");
                 return;
             }
-            setActiveFolderId(id);
-            toast.info("Opened folder. Use Download All Files for its contents.");
+            void ensureProtectedAccess(item, 'open').then((ok) => {
+                if (!ok) return;
+                void setActiveFolderId(id);
+                toast.info("Opened folder. Use Download All Files for its contents.");
+            });
             return;
         }
         queueDownload(id, name, activeFolderId);
-    }, [activeFolderId, displayedFiles, driveView, queueDownload, setActiveFolderId]);
+    }, [activeFolderId, displayedFiles, driveView, ensureProtectedAccess, queueDownload, setActiveFolderId]);
 
     const handleRepairDrive = useCallback(async () => {
         if (!savedMessagesDefault) {
@@ -822,6 +882,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }, [queryClient]);
 
     const handleRenameItem = useCallback(async (file: TelegramFile) => {
+        if (!await ensureProtectedAccess(file, 'rename')) return;
         const nextName = window.prompt('Rename', file.name)?.trim();
         if (!nextName || nextName === file.name) return;
         try {
@@ -832,7 +893,108 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         } catch (e) {
             toast.error(`Rename failed: ${e}`);
         }
-    }, [handleSyncFolders, queryClient]);
+    }, [ensureProtectedAccess, handleSyncFolders, queryClient]);
+
+    const handleCreateFolderHere = useCallback(async () => {
+        if (driveView !== 'files') {
+            toast.info("Open Saved Messages or a folder to create a folder.");
+            return;
+        }
+        const name = window.prompt('New folder name', 'New Folder')?.trim();
+        if (!name) return;
+        try {
+            await handleCreateFolder(name, activeFolderId);
+            queryClient.invalidateQueries({ queryKey: ['files'] });
+            await handleSyncFolders();
+        } catch {
+            // hook already shows the error
+        }
+    }, [activeFolderId, driveView, handleCreateFolder, handleSyncFolders, queryClient]);
+
+    const handleCopyItem = useCallback(async (file: TelegramFile) => {
+        if (!await ensureProtectedAccess(file, 'copy')) return;
+        const toastId = toast.loading(`Copying "${file.name}"...`);
+        try {
+            await invokeCommand('cmd_copy_item', {
+                messageId: file.id,
+                itemType: file.type || 'file',
+                targetFolderId: file.folderId ?? activeFolderId,
+            });
+            queryClient.invalidateQueries({ queryKey: ['files'] });
+            await handleSyncFolders();
+            toast.success(`Copied "${file.name}".`, { id: toastId });
+        } catch (e) {
+            toast.error(`Copy failed: ${e}`, { id: toastId });
+        }
+    }, [activeFolderId, ensureProtectedAccess, handleSyncFolders, queryClient]);
+
+    const handleMergeFolder = useCallback(async (file: TelegramFile) => {
+        if (file.type !== 'folder') return;
+        if (!await ensureProtectedAccess(file, 'merge')) return;
+        setSelectedIds([file.id]);
+        setMoveConflictStrategy('merge');
+        setShowMoveModal(true);
+        toast.info('Choose a destination. Same-name folders will be merged.');
+    }, [ensureProtectedAccess]);
+
+    const handleToggleLock = useCallback(async (file: TelegramFile) => {
+        if (!await ensureProtectedAccess(file, file.locked ? 'unlock' : 'lock')) return;
+        try {
+            await invokeCommand('cmd_toggle_lock', { messageId: file.id, itemType: file.type || 'file', locked: !file.locked });
+            queryClient.invalidateQueries({ queryKey: ['files'] });
+            await handleSyncFolders();
+            toast.success(file.locked ? 'Unlocked item.' : 'Locked item.');
+        } catch (e) {
+            toast.error(`Lock update failed: ${e}`);
+        }
+    }, [ensureProtectedAccess, handleSyncFolders, queryClient]);
+
+    const handleToggleProtection = useCallback(async (file: TelegramFile) => {
+        if (file.protected) {
+            if (!await ensureProtectedAccess(file, 'remove protection from')) return;
+            try {
+                await invokeCommand('cmd_set_protection', { messageId: file.id, itemType: file.type || 'file', protected: false });
+                setUnlockedProtectedIds((current) => {
+                    const next = new Set(current);
+                    next.delete(protectedItemKey(file));
+                    return next;
+                });
+                queryClient.invalidateQueries({ queryKey: ['files'] });
+                await handleSyncFolders();
+                toast.success('Protection removed.');
+            } catch (e) {
+                toast.error(`Protection update failed: ${e}`);
+            }
+            return;
+        }
+
+        const pin = window.prompt(`Set a PIN for "${file.name}"`);
+        if (!pin) return;
+        if (pin.trim().length < 4) {
+            toast.error('Use at least 4 characters for the PIN.');
+            return;
+        }
+        const protectionHint = window.prompt('Optional PIN hint') || undefined;
+        try {
+            await invokeCommand('cmd_set_protection', {
+                messageId: file.id,
+                itemType: file.type || 'file',
+                pin,
+                protectionHint,
+                protected: true,
+            });
+            setUnlockedProtectedIds((current) => {
+                const next = new Set(current);
+                next.add(protectedItemKey(file));
+                return next;
+            });
+            queryClient.invalidateQueries({ queryKey: ['files'] });
+            await handleSyncFolders();
+            toast.success('Protection enabled.');
+        } catch (e) {
+            toast.error(`Protection update failed: ${e}`);
+        }
+    }, [ensureProtectedAccess, handleSyncFolders, queryClient]);
 
     const handleTogglePin = useCallback(async (file: TelegramFile) => {
         try {
@@ -916,7 +1078,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 {showMoveModal && (
                     <MoveToFolderModal
                         folders={folders}
-                        onClose={() => setShowMoveModal(false)}
+                        onClose={() => { setShowMoveModal(false); setMoveConflictStrategy('keep_both'); }}
                         onSelect={handleMoveSelection}
                         activeFolderId={activeFolderId}
                         excludedFolderIds={displayedFiles.filter((item) => item.type === 'folder' && selectedIds.includes(item.id)).map((item) => item.id)}
@@ -972,11 +1134,17 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             <Sidebar
                 folders={folders}
                 activeFolderId={activeFolderId}
-                setActiveFolderId={setActiveFolderId}
+                setActiveFolderId={(id) => { void handleOpenFolderId(id); }}
                 activeDriveView={driveView}
                 onDriveViewChange={setDriveView}
                 onDrop={handleDropOnFolder}
-                onDelete={handleFolderDelete}
+                onDelete={(id, name) => {
+                    const folder = folders.find((item) => item.id === id);
+                    void (async () => {
+                        if (folder && !await ensureProtectedAccess(folderToExplorerItem(folder), 'delete')) return;
+                        await handleFolderDelete(id, name);
+                    })();
+                }}
                 onCreate={handleCreateFolder}
                 isSyncing={isSyncing}
                 isConnected={isConnected}
@@ -995,7 +1163,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onClearSelection={handleClearSelection}
                     allSelected={allDisplayedSelected}
                     selectableCount={selectableIds.length}
-                    onShowMoveModal={() => setShowMoveModal(true)}
+                    onShowMoveModal={() => { setMoveConflictStrategy('keep_both'); setShowMoveModal(true); }}
+                    onCreateFolder={driveView === 'files' ? handleCreateFolderHere : undefined}
                     onBulkDownload={handleSelectedBulkDownload}
                     onBulkDelete={handleSelectedDelete}
                     onBulkRestore={driveView === 'trash' ? handleSelectedRestore : undefined}
@@ -1034,6 +1203,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onPreview={handlePreview}
                     onManualUpload={handleManualUpload}
                     onManualFolderUpload={handleManualFolderUpload}
+                    onCreateFolder={handleCreateFolderHere}
                     allowUpload={driveView === 'files'}
                     onSelectionClear={() => setSelectedIds([])}
                     onToggleSelection={handleToggleSelection}
@@ -1048,6 +1218,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onTogglePin={handleTogglePin}
                     onSetFolderColor={handleFolderColor}
                     onShowVersions={handleShowVersions}
+                    onCopy={handleCopyItem}
+                    onMergeFolder={handleMergeFolder}
+                    onToggleLock={handleToggleLock}
+                    onToggleProtection={handleToggleProtection}
                 />
             </main>
 
@@ -1126,6 +1300,9 @@ function folderToExplorerItem(folder: TelegramFolder): TelegramFile {
         starred: folder.starred || false,
         pinned: folder.pinned || false,
         color: folder.color,
+        locked: folder.locked || false,
+        protected: folder.protected || false,
+        protectionHint: folder.protectionHint,
         trashed: folder.trashed || false,
         deletedAt: folder.deletedAt,
     };
@@ -1167,4 +1344,35 @@ function mergeFolders(folders: TelegramFolder[]): TelegramFolder[] {
         byId.set(folder.id, folder);
     }
     return Array.from(byId.values());
+}
+
+function protectedItemKey(item: TelegramFile): string {
+    return `${item.type === 'folder' ? 'folder' : 'file'}:${item.id}`;
+}
+
+function resolveMoveConflictStrategy(
+    selectedItems: TelegramFile[],
+    folders: TelegramFolder[],
+    targetFolderId: number | null,
+    preferred: MoveConflictStrategy
+): MoveConflictStrategy | null {
+    if (preferred === 'merge') return 'merge';
+    const selectedFolders = selectedItems.filter((item) => item.type === 'folder');
+    const hasFolderConflict = selectedFolders.some((item) => folders.some((folder) => (
+        folder.id !== item.id
+        && !folder.trashed
+        && (folder.parent_id ?? null) === targetFolderId
+        && folder.name.toLowerCase() === item.name.toLowerCase()
+    )));
+    if (!hasFolderConflict) return preferred;
+
+    const choice = window.prompt(
+        'A folder with the same name already exists there. Type one option: keep, merge, replace, skip',
+        preferred === 'replace' ? 'replace' : 'keep'
+    )?.trim().toLowerCase();
+    if (!choice) return null;
+    if (choice === 'merge') return 'merge';
+    if (choice === 'replace') return 'replace';
+    if (choice === 'skip') return 'skip';
+    return 'keep_both';
 }

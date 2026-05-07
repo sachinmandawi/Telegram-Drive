@@ -1,11 +1,12 @@
-import { Upload } from 'lucide-react';
+import { FolderPlus, Upload } from 'lucide-react';
 
 interface EmptyStateProps {
     onUpload: () => void;
     onUploadFolder?: () => void;
+    onCreateFolder?: () => void;
 }
 
-export function EmptyState({ onUpload, onUploadFolder }: EmptyStateProps) {
+export function EmptyState({ onUpload, onUploadFolder, onCreateFolder }: EmptyStateProps) {
     return (
         <div className="flex flex-col items-center justify-center py-20 px-8 text-center">
             {/* Custom SVG Illustration */}
@@ -71,6 +72,15 @@ export function EmptyState({ onUpload, onUploadFolder }: EmptyStateProps) {
                     >
                         <Upload className="w-5 h-5" />
                         Upload Folder
+                    </button>
+                )}
+                {onCreateFolder && (
+                    <button
+                        onClick={onCreateFolder}
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-telegram-hover text-telegram-text border border-telegram-border font-medium rounded-xl hover:border-telegram-primary hover:text-telegram-primary transition-all"
+                    >
+                        <FolderPlus className="w-5 h-5" />
+                        Create Folder
                     </button>
                 )}
             </div>

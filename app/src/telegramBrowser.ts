@@ -1,7 +1,9 @@
 import type {
+    DriveHealthWarning,
     DriveStats,
     IntegrityResult,
     OfflineCacheStats,
+    RecoveryItem,
     TelegramAccountInfo,
     TelegramFile,
     TelegramFolder,
@@ -27,6 +29,7 @@ const NEXT_FOLDER_ID_KEY = 'telegram-drive-next-virtual-folder-id';
 const MANIFEST_CACHE_KEY = 'telegram-drive-telegram-manifest-cache';
 const FILE_LIFECYCLE_KEY = 'telegram-drive-local-file-lifecycle';
 const FOLDER_LIFECYCLE_KEY = 'telegram-drive-local-folder-lifecycle';
+const SYNC_OPERATION_QUEUE_KEY = 'telegram-drive-sync-operation-queue';
 const DRIVE_ID_KEY = 'telegram-drive-persistent-drive-id';
 const ACTIVE_ACCOUNT_KEY = 'telegram-drive-active-account';
 const ACCOUNT_REGISTRY_KEY = 'telegram-drive-account-registry';
@@ -52,13 +55,18 @@ type DriveEventType =
     | 'folder_trashed'
     | 'folder_restored'
     | 'folder_deleted'
+    | 'folder_copied'
+    | 'folder_merged'
     | 'item_pinned'
+    | 'item_locked'
+    | 'item_protected'
     | 'file_uploaded'
     | 'file_moved'
     | 'file_renamed'
     | 'file_trashed'
     | 'file_deleted'
     | 'file_restored'
+    | 'file_copied'
     | 'file_starred'
     | 'file_tagged'
     | 'file_verified'
@@ -67,8 +75,26 @@ type DriveEventType =
     | 'manifest_repaired'
     | 'manifest_imported'
     | 'trash_cleaned'
+    | 'sync_operation_queued'
+    | 'sync_operation_completed'
+    | 'sync_operation_failed'
     | 'account_switched'
     | 'cache_cleared';
+
+type NameConflictStrategy = 'keep_both' | 'replace' | 'skip' | 'merge';
+
+type SyncOperationRecord = {
+    id: string;
+    type: string;
+    status: 'pending' | 'completed' | 'failed';
+    itemType?: 'file' | 'folder';
+    itemId?: number;
+    name?: string;
+    targetFolderId?: number | null;
+    createdAt: string;
+    completedAt?: string;
+    error?: string;
+};
 
 type DriveFileRecord = {
     messageId: number;
@@ -82,6 +108,10 @@ type DriveFileRecord = {
     starred?: boolean;
     pinned?: boolean;
     color?: string;
+    locked?: boolean;
+    protected?: boolean;
+    protectionHash?: string;
+    protectionHint?: string;
     trashed?: boolean;
     deletedAt?: string;
     missing?: boolean;
@@ -170,6 +200,7 @@ let pendingRemoteManifest: DriveManifest | null = null;
 let remoteManifestTimer: ReturnType<typeof setTimeout> | null = null;
 let remoteManifestWrite: Promise<void> = Promise.resolve();
 let nextTelegramUploadAt = 0;
+const unlockedProtectedItems = new Set<string>();
 
 function getActiveAccountId(): string {
     return localStorage.getItem(ACTIVE_ACCOUNT_KEY) || 'default';
@@ -299,15 +330,17 @@ export async function telegramFlushManifest(): Promise<boolean> {
 
 export async function telegramCreateFolder(name: string, parentId: number | null = null): Promise<TelegramFolder> {
     const manifest = await getDriveManifest();
+    assertDestinationFolderWritable(manifest, parentId, 'creating folders here');
+    const safeName = createUniqueFolderName(manifest, name.trim() || 'New Folder', parentId);
     const folder: TelegramFolder = {
         id: createVirtualFolderId(),
-        name,
+        name: safeName,
     };
 
     if (parentId !== null) folder.parent_id = parentId;
     manifest.folders.push(folder);
     forgetLocalFolderLifecycle(folder.id);
-    appendManifestEvent(manifest, 'folder_created', { folderId: folder.id, name, parentId });
+    appendManifestEvent(manifest, 'folder_created', { folderId: folder.id, name: safeName, parentId });
     await saveDriveManifest(manifest, 'debounced');
     return folder;
 }
@@ -318,77 +351,47 @@ export async function telegramDeleteFolder(folderId: number): Promise<boolean> {
     if (!folder) throw new Error('Folder metadata not found');
 
     const deletedAt = new Date().toISOString();
-    const folderIds = collectManifestFolderTreeIds(folderId, manifest.folders);
-    const foldersById = new Map(manifest.folders.map((item) => [item.id, item]));
-    let trashedFolders = 0;
-    let trashedFiles = 0;
-
-    for (const id of folderIds) {
-        const current = foldersById.get(id);
-        if (!current) continue;
-        const trashedFolder: TelegramFolder = {
-            ...current,
-            trashed: true,
-            deletedAt,
-            updatedAt: deletedAt,
-        };
-        replaceManifestFolder(manifest.folders, trashedFolder);
-        rememberLocalFolderLifecycle(trashedFolder, 'trashed');
-        trashedFolders++;
-    }
-
-    for (const [messageId, existing] of Object.entries(manifest.files)) {
-        const recordFolderId = existing.folderId ?? manifest.fileFolders[messageId] ?? null;
-        if (recordFolderId !== null && folderIds.has(recordFolderId)) {
-            const record = moveFileRecordToTrash(manifest, Number(messageId), deletedAt, existing);
-            record.folderId = recordFolderId;
-            manifest.fileFolders[messageId] = recordFolderId;
-            rememberLocalFileLifecycle(record, 'trashed');
-            trashedFiles++;
-        }
-    }
+    const trashed = trashFolderTreeInManifest(manifest, folderId, deletedAt);
 
     appendManifestEvent(manifest, 'folder_trashed', {
         folderId,
         name: folder?.name,
         parentId: folder?.parent_id ?? null,
-        folderIds: Array.from(folderIds),
-        folders: Array.from(folderIds)
-            .map((id) => foldersById.get(id))
-            .filter(Boolean),
-        trashedFiles,
-        trashedFolders,
+        folderIds: Array.from(trashed.folderIds),
+        folders: trashed.folders,
+        trashedFiles: trashed.trashedFiles,
+        trashedFolders: trashed.trashedFolders,
         deletedAt,
     });
     await saveDriveManifest(manifest, 'debounced');
     return true;
 }
 
-export async function telegramMoveFiles(messageIds: number[], targetFolderId: number | null): Promise<boolean> {
+export async function telegramMoveFiles(
+    messageIds: number[],
+    targetFolderId: number | null,
+    conflictStrategy: NameConflictStrategy = 'keep_both'
+): Promise<boolean> {
     const manifest = await getDriveManifest();
     const updatedAt = new Date().toISOString();
+    const strategy = normalizeConflictStrategy(conflictStrategy);
+    let moved = 0;
     for (const messageId of messageIds) {
-        const key = String(messageId);
-        const record = manifest.files[key];
-        const nextName = record ? createUniqueFileName(manifest, record.name, targetFolderId, messageId) : undefined;
-        manifest.fileFolders[String(messageId)] = targetFolderId;
-        if (record) {
-            manifest.files[key] = {
-                ...record,
-                folderId: targetFolderId,
-                name: nextName || record.name,
-                updatedAt,
-            };
-        }
+        if (moveFileRecordToFolderWithConflict(manifest, Number(messageId), targetFolderId, strategy, updatedAt)) moved++;
     }
-    appendManifestEvent(manifest, 'file_moved', { messageIds, targetFolderId });
+    appendManifestEvent(manifest, 'file_moved', { messageIds, moved, targetFolderId, conflictStrategy: strategy });
     await saveDriveManifest(manifest, 'debounced');
     return true;
 }
 
-export async function telegramMoveFolders(folderIds: number[], targetParentId: number | null): Promise<boolean> {
+export async function telegramMoveFolders(
+    folderIds: number[],
+    targetParentId: number | null,
+    conflictStrategy: NameConflictStrategy = 'keep_both'
+): Promise<boolean> {
     const manifest = await getDriveManifest();
     const updatedAt = new Date().toISOString();
+    const strategy = normalizeConflictStrategy(conflictStrategy);
     const moving = new Set(folderIds.filter((id) => Number.isFinite(id)));
     for (const folderId of moving) {
         if (targetParentId !== null && collectManifestFolderTreeIds(folderId, manifest.folders).has(targetParentId)) {
@@ -396,19 +399,12 @@ export async function telegramMoveFolders(folderIds: number[], targetParentId: n
         }
     }
 
+    let moved = 0;
     for (const folderId of moving) {
-        const folder = manifest.folders.find((item) => item.id === folderId);
-        if (!folder) continue;
-        replaceManifestFolder(manifest.folders, {
-            ...folder,
-            parent_id: targetParentId ?? undefined,
-            name: createUniqueFolderName(manifest, folder.name, targetParentId, folderId),
-            updatedAt,
-        });
-        forgetLocalFolderLifecycle(folderId);
+        if (moveFolderToParentWithConflict(manifest, folderId, targetParentId, strategy, updatedAt)) moved++;
     }
 
-    appendManifestEvent(manifest, 'folder_moved', { folderIds: Array.from(moving), targetParentId });
+    appendManifestEvent(manifest, 'folder_moved', { folderIds: Array.from(moving), moved, targetParentId, conflictStrategy: strategy });
     await saveDriveManifest(manifest, 'debounced');
     return true;
 }
@@ -559,6 +555,7 @@ export async function telegramDeleteFile(messageId: number): Promise<boolean> {
         ensureManifestFileRecord(manifest, message);
     }
     const existing = manifest.files[key];
+    if (existing) assertFileMutable(manifest, existing, 'delete');
     const deletedAt = new Date().toISOString();
     const record = moveFileRecordToTrash(manifest, messageId, deletedAt, existing);
     manifest.fileFolders[key] = manifest.files[key].folderId ?? null;
@@ -648,11 +645,12 @@ export async function telegramRestoreFolder(folderId: number): Promise<boolean> 
 }
 
 export async function telegramPermanentlyDeleteFile(messageId: number): Promise<boolean> {
-    const client = await authorizedTelegramClient();
-    await client.deleteMessages('me', [messageId], { revoke: true });
     const manifest = await getDriveManifest();
     const key = String(messageId);
     const record = manifest.files[key] || readLocalFileLifecycle()[key]?.record;
+    if (record) assertFileMutable(manifest, record, 'delete forever');
+    const client = await authorizedTelegramClient();
+    await client.deleteMessages('me', [messageId], { revoke: true });
     if (record) {
         rememberLocalFileLifecycle(record, 'deleted');
     }
@@ -801,6 +799,49 @@ export async function telegramGetObjectUrl(messageId: number): Promise<string> {
     return URL.createObjectURL(blob);
 }
 
+async function copyRecordToFolder(
+    source: DriveFileRecord,
+    targetFolderId: number | null,
+    preferredName: string
+): Promise<TelegramFile> {
+    const manifestBeforeCopy = await getDriveManifest();
+    assertDestinationFolderWritable(manifestBeforeCopy, targetFolderId, 'copying items here');
+    const copyName = createUniqueFileName(manifestBeforeCopy, preferredName, targetFolderId);
+    const { blob } = await telegramDownloadBlob(source.messageId);
+    const file = new File([blob], copyName, {
+        type: source.mimeType || blob.type || 'application/octet-stream',
+        lastModified: Date.now(),
+    });
+    const uploaded = await telegramUploadFile(file, targetFolderId);
+    const manifest = await getDriveManifest();
+    const key = String(uploaded.id);
+    const uploadedRecord = manifest.files[key];
+    if (!uploadedRecord) return uploaded;
+
+    manifest.files[key] = {
+        ...uploadedRecord,
+        tags: source.tags ? [...source.tags] : [],
+        starred: false,
+        pinned: false,
+        color: source.color,
+        locked: false,
+        protected: false,
+        protectionHash: undefined,
+        protectionHint: undefined,
+        originalPath: source.originalPath,
+        duplicateOf: source.messageId,
+        updatedAt: new Date().toISOString(),
+    };
+    appendManifestEvent(manifest, 'file_copied', {
+        messageId: uploaded.id,
+        sourceMessageId: source.messageId,
+        folderId: targetFolderId,
+        name: copyName,
+    });
+    await saveDriveManifest(manifest, 'debounced');
+    return recordToTelegramFile(manifest.files[key]);
+}
+
 export async function telegramRenameItem(id: number, itemType: 'file' | 'folder', name: string): Promise<TelegramFile | TelegramFolder> {
     const manifest = await getDriveManifest();
     const updatedAt = new Date().toISOString();
@@ -810,6 +851,7 @@ export async function telegramRenameItem(id: number, itemType: 'file' | 'folder'
     if (itemType === 'folder') {
         const folder = manifest.folders.find((item) => item.id === id);
         if (!folder) throw new Error('Folder metadata not found');
+        assertFolderMutable(manifest, folder, 'rename');
         const nextName = createUniqueFolderName(manifest, trimmed, folder.parent_id ?? null, id);
         const updatedFolder = { ...folder, name: nextName, updatedAt };
         replaceManifestFolder(manifest.folders, updatedFolder);
@@ -821,6 +863,7 @@ export async function telegramRenameItem(id: number, itemType: 'file' | 'folder'
     const key = String(id);
     const record = manifest.files[key];
     if (!record) throw new Error('File metadata not found');
+    assertFileMutable(manifest, record, 'rename');
     const nextName = createUniqueFileName(manifest, trimmed, record.folderId ?? null, id);
     manifest.files[key] = {
         ...record,
@@ -854,6 +897,7 @@ export async function telegramSetFolderColor(folderId: number, color: string): P
     const manifest = await getDriveManifest();
     const folder = manifest.folders.find((item) => item.id === folderId);
     if (!folder) throw new Error('Folder metadata not found');
+    assertFolderAccessible(manifest, folder, 'change color');
     const safeColor = normalizeFolderColor(color);
     replaceManifestFolder(manifest.folders, {
         ...folder,
@@ -865,9 +909,288 @@ export async function telegramSetFolderColor(folderId: number, color: string): P
     return true;
 }
 
+export async function telegramCopyItem(
+    id: number,
+    itemType: 'file' | 'folder',
+    targetFolderId?: number | null
+): Promise<TelegramFile | TelegramFolder> {
+    const operation = startSyncOperation('copy', { itemType, itemId: id, targetFolderId });
+    try {
+        if (itemType !== 'folder') {
+            const manifest = await getDriveManifest();
+            const source = manifest.files[String(id)];
+            if (!source || source.trashed || source.missing) throw new Error('File metadata not found');
+            assertFileAccessible(manifest, source, 'copy');
+            const copyTargetFolderId = targetFolderId === undefined ? (source.folderId ?? null) : targetFolderId;
+            const result = await copyRecordToFolder(source, copyTargetFolderId, createCopyName(source.name));
+            finishSyncOperation(operation.id);
+            return result;
+        }
+
+        const manifest = await getDriveManifest();
+        const sourceFolder = manifest.folders.find((folder) => folder.id === id);
+        if (!sourceFolder || sourceFolder.trashed) throw new Error('Folder metadata not found');
+        const sourceFolderIds = collectManifestFolderTreeIds(id, manifest.folders);
+        for (const folderId of sourceFolderIds) {
+            const folder = manifest.folders.find((item) => item.id === folderId);
+            if (folder) assertFolderAccessible(manifest, folder, 'copy');
+        }
+        const sourceFileRecords = Object.values(manifest.files).filter((record) => {
+            const recordFolderId = record.folderId ?? manifest.fileFolders[String(record.messageId)] ?? null;
+            return recordFolderId !== null
+                && sourceFolderIds.has(recordFolderId)
+                && !record.trashed
+                && !record.missing;
+        });
+        for (const record of sourceFileRecords) {
+            assertFileAccessible(manifest, record, 'copy');
+        }
+
+        const copyParentId = targetFolderId === undefined ? (sourceFolder.parent_id ?? null) : targetFolderId;
+        assertDestinationFolderWritable(manifest, copyParentId, 'copying items here');
+        const folderMap = new Map<number, number>();
+
+        const copyFolderShape = (sourceId: number, parentId: number | null, preferredName?: string): number => {
+            const source = manifest.folders.find((folder) => folder.id === sourceId);
+            if (!source) throw new Error('Folder metadata not found');
+            const copyId = createVirtualFolderId();
+            const name = createUniqueFolderName(manifest, preferredName || source.name, parentId);
+            const copied: TelegramFolder = {
+                id: copyId,
+                name,
+                parent_id: parentId ?? undefined,
+                color: source.color,
+                updatedAt: new Date().toISOString(),
+            };
+            manifest.folders.push(copied);
+            folderMap.set(sourceId, copyId);
+
+            for (const child of manifest.folders.filter((folder) => !folder.trashed && (folder.parent_id ?? null) === sourceId && folder.id !== copyId)) {
+                copyFolderShape(child.id, copyId);
+            }
+            return copyId;
+        };
+
+        const newRootId = copyFolderShape(id, copyParentId, createCopyName(sourceFolder.name));
+        await saveDriveManifest(manifest, 'debounced');
+
+        for (const record of sourceFileRecords) {
+            const recordFolderId = record.folderId ?? manifest.fileFolders[String(record.messageId)] ?? null;
+            const destinationFolderId = recordFolderId === null ? newRootId : folderMap.get(recordFolderId) ?? newRootId;
+            await copyRecordToFolder(record, destinationFolderId, record.name);
+        }
+
+        const finalManifest = await getDriveManifest();
+        const copiedFolder = finalManifest.folders.find((folder) => folder.id === newRootId);
+        if (!copiedFolder) throw new Error('Copied folder metadata not found');
+        appendManifestEvent(finalManifest, 'folder_copied', {
+            sourceFolderId: id,
+            folderId: newRootId,
+            name: copiedFolder.name,
+            copiedFolders: folderMap.size,
+            copiedFiles: sourceFileRecords.length,
+        });
+        await saveDriveManifest(finalManifest, 'debounced');
+        finishSyncOperation(operation.id);
+        return folderWithStats(copiedFolder, finalManifest);
+    } catch (err) {
+        failSyncOperation(operation.id, err);
+        throw err;
+    }
+}
+
+export async function telegramToggleLockItem(
+    id: number,
+    itemType: 'file' | 'folder',
+    locked?: boolean
+): Promise<boolean> {
+    const manifest = await getDriveManifest();
+    const updatedAt = new Date().toISOString();
+    if (itemType === 'folder') {
+        const folder = manifest.folders.find((item) => item.id === id);
+        if (!folder) throw new Error('Folder metadata not found');
+        assertFolderAccessible(manifest, folder, 'change lock');
+        const nextLocked = locked ?? !folder.locked;
+        replaceManifestFolder(manifest.folders, { ...folder, locked: nextLocked, updatedAt });
+        appendManifestEvent(manifest, 'item_locked', { id, folderId: id, itemType, locked: nextLocked });
+    } else {
+        const key = String(id);
+        const record = manifest.files[key];
+        if (!record) throw new Error('File metadata not found');
+        assertFileAccessible(manifest, record, 'change lock');
+        const nextLocked = locked ?? !record.locked;
+        manifest.files[key] = { ...record, locked: nextLocked, updatedAt };
+        appendManifestEvent(manifest, 'item_locked', { id, messageId: id, itemType, locked: nextLocked });
+    }
+    await saveDriveManifest(manifest, 'debounced');
+    return true;
+}
+
+export async function telegramSetItemProtection(
+    id: number,
+    itemType: 'file' | 'folder',
+    pin: string,
+    protectionHint?: string,
+    protectedEnabled = true
+): Promise<boolean> {
+    const manifest = await getDriveManifest();
+    const updatedAt = new Date().toISOString();
+    const safeHint = protectionHint?.trim() || undefined;
+    const updateFolder = async () => {
+        const folder = manifest.folders.find((item) => item.id === id);
+        if (!folder) throw new Error('Folder metadata not found');
+        if (!protectedEnabled && isFolderProtectedAndLocked(folder)) {
+            throw new Error(`Folder "${folder.name}" is protected. Unlock it before removing protection.`);
+        }
+        const protectionHash = protectedEnabled ? await sha256Text(pin) : undefined;
+        replaceManifestFolder(manifest.folders, {
+            ...folder,
+            protected: protectedEnabled,
+            protectionHash,
+            protectionHint: protectedEnabled ? safeHint : undefined,
+            updatedAt,
+        });
+    };
+    const updateFile = async () => {
+        const key = String(id);
+        const record = manifest.files[key];
+        if (!record) throw new Error('File metadata not found');
+        if (!protectedEnabled && isFileProtectedAndLocked(record)) {
+            throw new Error(`File "${record.name}" is protected. Unlock it before removing protection.`);
+        }
+        manifest.files[key] = {
+            ...record,
+            protected: protectedEnabled,
+            protectionHash: protectedEnabled ? await sha256Text(pin) : undefined,
+            protectionHint: protectedEnabled ? safeHint : undefined,
+            updatedAt,
+        };
+    };
+
+    if (protectedEnabled && !pin.trim()) throw new Error('Protection PIN is required');
+    if (itemType === 'folder') await updateFolder();
+    else await updateFile();
+
+    if (protectedEnabled) unlockedProtectedItems.add(itemProtectionKey(itemType, id));
+    else unlockedProtectedItems.delete(itemProtectionKey(itemType, id));
+
+    appendManifestEvent(manifest, 'item_protected', {
+        id,
+        folderId: itemType === 'folder' ? id : undefined,
+        messageId: itemType === 'file' ? id : undefined,
+        itemType,
+        protected: protectedEnabled,
+        protectionHint: safeHint,
+    });
+    await saveDriveManifest(manifest, 'debounced');
+    return true;
+}
+
+export async function telegramUnlockProtectedItem(
+    id: number,
+    itemType: 'file' | 'folder',
+    pin: string
+): Promise<boolean> {
+    const manifest = await getDriveManifest();
+    const hash = itemType === 'folder'
+        ? folderProtectionHash(manifest.folders.find((item) => item.id === id) || { id, name: '' })
+        : manifest.files[String(id)]?.protectionHash;
+    if (!hash) return true;
+    const enteredHash = await sha256Text(pin);
+    if (enteredHash !== hash) throw new Error('Invalid protection PIN');
+    unlockedProtectedItems.add(itemProtectionKey(itemType, id));
+    return true;
+}
+
+export async function telegramGetStorageHealth(): Promise<DriveHealthWarning[]> {
+    const manifest = await getDriveManifest();
+    const stats = buildDriveStats(manifest);
+    const queue = readSyncOperationQueue();
+    const failedOps = queue.filter((item) => item.status === 'failed');
+    const pendingOps = queue.filter((item) => item.status === 'pending');
+    const active = Object.values(manifest.files).filter((record) => !record.trashed && !record.missing);
+    const lockedItems = active.filter((record) => record.locked).length
+        + manifest.folders.filter((folder) => folder.locked && !folder.trashed).length;
+    const protectedItems = active.filter((record) => record.protected).length
+        + manifest.folders.filter((folder) => folder.protected && !folder.trashed).length;
+    const warnings: DriveHealthWarning[] = [];
+    let id = -9_000_000;
+    const add = (name: string, category: string, severity: DriveHealthWarning['severity'], size = 0, sizeStr = '') => {
+        warnings.push({ id: id--, name, category, severity, size, sizeStr, created_at: new Date().toLocaleString() });
+    };
+
+    if (stats.missingFiles > 0) add(`${stats.missingFiles} indexed file(s) are missing from Telegram`, 'Missing files', 'danger', stats.missingFiles, 'Run Repair Index');
+    if (stats.checksumMismatches > 0) add(`${stats.checksumMismatches} checksum mismatch(es) need review`, 'Integrity', 'danger', stats.checksumMismatches, 'Verify or replace');
+    if (failedOps.length > 0) add(`${failedOps.length} sync operation(s) failed`, 'Recovery', 'warning', failedOps.length, 'Open Recovery Center');
+    if (pendingOps.length > 0) add(`${pendingOps.length} sync operation(s) are still pending`, 'Sync queue', 'info', pendingOps.length, 'Retry or wait');
+    if (stats.trashedBytes > 250 * 1024 * 1024) add(`Trash is using ${formatBytes(stats.trashedBytes)}`, 'Trash', 'warning', stats.trashedBytes, 'Cleanup trash');
+    if (stats.backups < 2) add('Only a few manifest backups are available', 'Backups', 'info', stats.backups, 'Export a backup');
+    if (lockedItems > 0) add(`${lockedItems} locked item(s) are protected from edits`, 'Locked items', 'info', lockedItems, 'Unlock to edit');
+    if (protectedItems > 0) add(`${protectedItems} PIN-protected item(s) are active`, 'Protected items', 'info', protectedItems, 'PIN required');
+    if (active.some((record) => record.size > 1024 * 1024 * 1024)) add('One or more files are larger than 1 GB', 'Large files', 'warning', 0, 'Consider archive splitting');
+
+    if (warnings.length === 0) add('Storage health looks good', 'Healthy', 'info', 0, 'No action needed');
+    return warnings;
+}
+
+export async function telegramGetRecoveryItems(): Promise<RecoveryItem[]> {
+    const manifest = await getDriveManifest();
+    const items: RecoveryItem[] = [];
+    let id = -9_500_000;
+    for (const record of Object.values(manifest.files)) {
+        if (record.missing) {
+            items.push({
+                id: id--,
+                name: `Missing file metadata: ${record.name}`,
+                size: record.size || 0,
+                sizeStr: 'Run Repair Index',
+                status: 'missing',
+                itemType: 'file',
+                created_at: record.updatedAt ? new Date(record.updatedAt).toLocaleString() : '',
+            });
+        }
+    }
+    for (const operation of readSyncOperationQueue().filter((item) => item.status !== 'completed')) {
+        items.push({
+            id: id--,
+            name: `${operation.type}: ${operation.name || operation.itemId || 'Drive item'}`,
+            size: 0,
+            sizeStr: operation.status === 'failed' ? 'Failed' : 'Pending',
+            status: operation.status === 'failed' ? 'failed' : 'pending',
+            itemType: 'operation',
+            error: operation.error,
+            created_at: operation.createdAt ? new Date(operation.createdAt).toLocaleString() : '',
+        });
+    }
+    for (const folder of manifest.folders.filter((item) => item.protected && !item.trashed)) {
+        items.push({
+            id: id--,
+            name: `Protected folder: ${folder.name}`,
+            size: 0,
+            sizeStr: folder.protectionHint || 'PIN required',
+            status: 'protected',
+            itemType: 'folder',
+            created_at: folder.updatedAt ? new Date(folder.updatedAt).toLocaleString() : '',
+        });
+    }
+    for (const folder of manifest.folders.filter((item) => item.trashed && !isInsideTrashedFolder(item, manifest.folders)).slice(0, 12)) {
+        items.push({
+            id: id--,
+            name: `Trashed folder: ${folder.name}`,
+            size: 0,
+            sizeStr: 'Restorable from Trash',
+            status: 'trash',
+            itemType: 'folder',
+            created_at: folder.deletedAt ? new Date(folder.deletedAt).toLocaleString() : '',
+        });
+    }
+    return items;
+}
+
 export async function telegramPermanentlyDeleteFolder(folderId: number): Promise<boolean> {
     const client = await authorizedTelegramClient();
     const manifest = await getDriveManifest();
+    assertFolderTreeMutable(manifest, collectManifestFolderTreeIds(folderId, manifest.folders), 'delete forever');
     await permanentlyDeleteFolderFromManifest(manifest, folderId, client);
     await saveDriveManifest(manifest, 'debounced');
     return true;
@@ -1721,6 +2044,12 @@ function normalizeFolderRecord(folder: TelegramFolder): TelegramFolder {
     normalized.starred = Boolean(folder.starred);
     normalized.pinned = Boolean(folder.pinned);
     if (typeof folder.color === 'string') normalized.color = normalizeFolderColor(folder.color);
+    normalized.locked = Boolean(folder.locked);
+    normalized.protected = Boolean(folder.protected);
+    if (typeof (folder as TelegramFolder & { protectionHash?: string }).protectionHash === 'string') {
+        (normalized as TelegramFolder & { protectionHash?: string }).protectionHash = (folder as TelegramFolder & { protectionHash?: string }).protectionHash;
+    }
+    if (typeof folder.protectionHint === 'string') normalized.protectionHint = folder.protectionHint;
     return normalized;
 }
 
@@ -1740,6 +2069,10 @@ function normalizeLifecycleRecord(messageId: number, record: Partial<DriveFileRe
         starred: Boolean(record.starred),
         pinned: Boolean(record.pinned),
         color: typeof record.color === 'string' ? normalizeFolderColor(record.color) : undefined,
+        locked: Boolean(record.locked),
+        protected: Boolean(record.protected),
+        protectionHash: typeof record.protectionHash === 'string' ? record.protectionHash : undefined,
+        protectionHint: typeof record.protectionHint === 'string' ? record.protectionHint : undefined,
         trashed: Boolean(record.trashed),
         deletedAt: typeof record.deletedAt === 'string' ? record.deletedAt : undefined,
         missing: Boolean(record.missing),
@@ -1810,6 +2143,12 @@ function normalizeFolders(folders: TelegramFolder[]): TelegramFolder[] {
         starred: Boolean(folder.starred),
         pinned: Boolean(folder.pinned),
         color: typeof folder.color === 'string' ? normalizeFolderColor(folder.color) : undefined,
+        locked: Boolean(folder.locked),
+        protected: Boolean(folder.protected),
+        ...((typeof (folder as TelegramFolder & { protectionHash?: string }).protectionHash === 'string')
+            ? { protectionHash: (folder as TelegramFolder & { protectionHash?: string }).protectionHash }
+            : {}),
+        protectionHint: typeof folder.protectionHint === 'string' ? folder.protectionHint : undefined,
     }))).filter((folder) => Number.isFinite(folder.id));
 }
 
@@ -1904,6 +2243,10 @@ function normalizeFileRecords(
             starred: Boolean(record.starred),
             pinned: Boolean(record.pinned),
             color: typeof record.color === 'string' ? normalizeFolderColor(record.color) : undefined,
+            locked: Boolean(record.locked),
+            protected: Boolean(record.protected),
+            protectionHash: typeof record.protectionHash === 'string' ? record.protectionHash : undefined,
+            protectionHint: typeof record.protectionHint === 'string' ? record.protectionHint : undefined,
             trashed: Boolean(record.trashed),
             deletedAt: typeof record.deletedAt === 'string' ? record.deletedAt : undefined,
             missing: Boolean(record.missing),
@@ -1962,12 +2305,14 @@ function applyFileLifecycleEvents(
             && event.type !== 'file_starred'
             && event.type !== 'file_tagged'
             && event.type !== 'item_pinned'
+            && event.type !== 'item_locked'
+            && event.type !== 'item_protected'
         ) {
             continue;
         }
 
         const itemType = event.payload?.itemType === 'folder' ? 'folder' : 'file';
-        if (event.type === 'item_pinned' && itemType === 'folder') continue;
+        if ((event.type === 'item_pinned' || event.type === 'item_locked' || event.type === 'item_protected') && itemType === 'folder') continue;
         const messageId = Number(event.payload?.messageId ?? event.payload?.id);
         if (!Number.isFinite(messageId)) continue;
         const key = String(messageId);
@@ -2021,6 +2366,19 @@ function applyFileLifecycleEvents(
             normalized[key] = {
                 ...record,
                 pinned: Boolean(event.payload?.pinned),
+                updatedAt: laterTimestamp(record.updatedAt, event.at),
+            };
+        } else if (event.type === 'item_locked') {
+            normalized[key] = {
+                ...record,
+                locked: Boolean(event.payload?.locked),
+                updatedAt: laterTimestamp(record.updatedAt, event.at),
+            };
+        } else if (event.type === 'item_protected') {
+            normalized[key] = {
+                ...record,
+                protected: Boolean(event.payload?.protected),
+                protectionHint: typeof event.payload?.protectionHint === 'string' ? event.payload.protectionHint : record.protectionHint,
                 updatedAt: laterTimestamp(record.updatedAt, event.at),
             };
         }
@@ -2092,6 +2450,25 @@ function applyFolderLifecycleEvents(
         if (event.type === 'item_pinned' && event.payload?.itemType === 'folder') {
             const folder = normalized.find((item) => item.id === Number(event.payload?.id));
             if (folder) replaceManifestFolder(normalized, { ...folder, pinned: Boolean(event.payload?.pinned), updatedAt: laterTimestamp(folder.updatedAt, event.at) });
+            continue;
+        }
+
+        if (event.type === 'item_locked' && event.payload?.itemType === 'folder') {
+            const folder = normalized.find((item) => item.id === Number(event.payload?.id));
+            if (folder) replaceManifestFolder(normalized, { ...folder, locked: Boolean(event.payload?.locked), updatedAt: laterTimestamp(folder.updatedAt, event.at) });
+            continue;
+        }
+
+        if (event.type === 'item_protected' && event.payload?.itemType === 'folder') {
+            const folder = normalized.find((item) => item.id === Number(event.payload?.id));
+            if (folder) {
+                replaceManifestFolder(normalized, {
+                    ...folder,
+                    protected: Boolean(event.payload?.protected),
+                    protectionHint: typeof event.payload?.protectionHint === 'string' ? event.payload.protectionHint : folder.protectionHint,
+                    updatedAt: laterTimestamp(folder.updatedAt, event.at),
+                });
+            }
             continue;
         }
 
@@ -2545,6 +2922,354 @@ function createUniqueName(preferredName: string, taken: Set<string>): string {
     return candidate;
 }
 
+function createCopyName(name: string): string {
+    const dotIndex = name.lastIndexOf('.');
+    const hasExtension = dotIndex > 0 && dotIndex < name.length - 1;
+    const base = hasExtension ? name.slice(0, dotIndex) : name;
+    const ext = hasExtension ? name.slice(dotIndex) : '';
+    return `${base} - Copy${ext}`;
+}
+
+function normalizeConflictStrategy(strategy?: unknown): NameConflictStrategy {
+    if (strategy === 'replace' || strategy === 'skip' || strategy === 'merge') return strategy;
+    return 'keep_both';
+}
+
+function findActiveFileNameConflict(
+    manifest: DriveManifest,
+    name: string,
+    folderId: number | null,
+    currentMessageId?: number
+): DriveFileRecord | undefined {
+    return Object.values(manifest.files)
+        .filter((record) => !record.trashed && !record.missing)
+        .find((record) => record.messageId !== currentMessageId
+            && (record.folderId ?? null) === folderId
+            && record.name.toLowerCase() === name.toLowerCase());
+}
+
+function findActiveFolderNameConflict(
+    manifest: DriveManifest,
+    name: string,
+    parentId: number | null,
+    currentFolderId?: number
+): TelegramFolder | undefined {
+    return manifest.folders
+        .filter((folder) => !folder.trashed)
+        .find((folder) => folder.id !== currentFolderId
+            && (folder.parent_id ?? null) === parentId
+            && folder.name.toLowerCase() === name.toLowerCase());
+}
+
+function readSyncOperationQueue(): SyncOperationRecord[] {
+    try {
+        const raw = localStorage.getItem(scopedKey(SYNC_OPERATION_QUEUE_KEY));
+        const parsed = raw ? JSON.parse(raw) as SyncOperationRecord[] : [];
+        return Array.isArray(parsed) ? parsed.filter((item) => item?.id && item.status) : [];
+    } catch {
+        return [];
+    }
+}
+
+function writeSyncOperationQueue(records: SyncOperationRecord[]) {
+    localStorage.setItem(scopedKey(SYNC_OPERATION_QUEUE_KEY), JSON.stringify(records.slice(-120)));
+}
+
+function startSyncOperation(type: string, payload: Partial<SyncOperationRecord>): SyncOperationRecord {
+    const operation: SyncOperationRecord = {
+        id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}:${Math.random().toString(36).slice(2)}`,
+        type,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        ...payload,
+    };
+    writeSyncOperationQueue([...readSyncOperationQueue(), operation]);
+    return operation;
+}
+
+function finishSyncOperation(id: string) {
+    writeSyncOperationQueue(readSyncOperationQueue().map((item) => (
+        item.id === id
+            ? { ...item, status: 'completed', completedAt: new Date().toISOString(), error: undefined }
+            : item
+    )));
+}
+
+function failSyncOperation(id: string, error: unknown) {
+    writeSyncOperationQueue(readSyncOperationQueue().map((item) => (
+        item.id === id
+            ? { ...item, status: 'failed', completedAt: new Date().toISOString(), error: getTelegramErrorMessage(error) }
+            : item
+    )));
+}
+
+function itemProtectionKey(itemType: 'file' | 'folder', id: number): string {
+    return `${itemType}:${id}`;
+}
+
+function isProtectedItemUnlocked(itemType: 'file' | 'folder', id: number): boolean {
+    return unlockedProtectedItems.has(itemProtectionKey(itemType, id));
+}
+
+function folderProtectionHash(folder: TelegramFolder): string | undefined {
+    return typeof folder.protectionHash === 'string' ? folder.protectionHash : undefined;
+}
+
+function isFolderProtectedAndLocked(folder: TelegramFolder): boolean {
+    return Boolean(folder.protected && folderProtectionHash(folder) && !isProtectedItemUnlocked('folder', folder.id));
+}
+
+function isFileProtectedAndLocked(record: DriveFileRecord): boolean {
+    return Boolean(record.protected && record.protectionHash && !isProtectedItemUnlocked('file', record.messageId));
+}
+
+function getManifestFolderAncestryIds(folderId: number | null, folders: TelegramFolder[]): number[] {
+    const byId = new Map(folders.map((folder) => [folder.id, folder]));
+    const ids: number[] = [];
+    const seen = new Set<number>();
+    let current = folderId === null ? undefined : byId.get(folderId);
+    while (current && !seen.has(current.id)) {
+        seen.add(current.id);
+        ids.push(current.id);
+        current = current.parent_id === undefined ? undefined : byId.get(current.parent_id);
+    }
+    return ids;
+}
+
+function assertDestinationFolderWritable(manifest: DriveManifest, folderId: number | null, action: string) {
+    if (folderId === null) return;
+    const folder = manifest.folders.find((item) => item.id === folderId);
+    if (!folder || folder.trashed) throw new Error('Target folder metadata not found');
+    if (folder.locked) throw new Error(`Folder "${folder.name}" is locked. Unlock it before ${action}.`);
+    if (isFolderProtectedAndLocked(folder)) throw new Error(`Folder "${folder.name}" is protected. Unlock it before ${action}.`);
+}
+
+function assertFileAccessible(manifest: DriveManifest, record: DriveFileRecord, action: string) {
+    if (isFileProtectedAndLocked(record)) throw new Error(`File "${record.name}" is protected. Unlock it before ${action}.`);
+    for (const folderId of getManifestFolderAncestryIds(record.folderId ?? null, manifest.folders)) {
+        const folder = manifest.folders.find((item) => item.id === folderId);
+        if (folder && isFolderProtectedAndLocked(folder)) {
+            throw new Error(`Folder "${folder.name}" is protected. Unlock it before ${action}.`);
+        }
+    }
+}
+
+function assertFileMutable(manifest: DriveManifest, record: DriveFileRecord, action: string) {
+    if (record.locked) throw new Error(`File "${record.name}" is locked. Unlock it before ${action}.`);
+    assertFileAccessible(manifest, record, action);
+}
+
+function assertFolderAccessible(manifest: DriveManifest, folder: TelegramFolder, action: string) {
+    if (isFolderProtectedAndLocked(folder)) throw new Error(`Folder "${folder.name}" is protected. Unlock it before ${action}.`);
+    for (const folderId of getManifestFolderAncestryIds(folder.parent_id ?? null, manifest.folders)) {
+        const ancestor = manifest.folders.find((item) => item.id === folderId);
+        if (ancestor && isFolderProtectedAndLocked(ancestor)) {
+            throw new Error(`Folder "${ancestor.name}" is protected. Unlock it before ${action}.`);
+        }
+    }
+}
+
+function assertFolderMutable(manifest: DriveManifest, folder: TelegramFolder, action: string) {
+    if (folder.locked) throw new Error(`Folder "${folder.name}" is locked. Unlock it before ${action}.`);
+    assertFolderAccessible(manifest, folder, action);
+}
+
+function assertFolderTreeMutable(manifest: DriveManifest, folderIds: Set<number>, action: string) {
+    for (const folderId of folderIds) {
+        const folder = manifest.folders.find((item) => item.id === folderId);
+        if (folder) assertFolderMutable(manifest, folder, action);
+    }
+    for (const record of Object.values(manifest.files)) {
+        const recordFolderId = record.folderId ?? manifest.fileFolders[String(record.messageId)] ?? null;
+        if (recordFolderId !== null && folderIds.has(recordFolderId)) {
+            assertFileMutable(manifest, record, action);
+        }
+    }
+}
+
+function trashFolderTreeInManifest(
+    manifest: DriveManifest,
+    folderId: number,
+    deletedAt = new Date().toISOString()
+): { folderIds: Set<number>; folders: TelegramFolder[]; trashedFolders: number; trashedFiles: number } {
+    const folderIds = collectManifestFolderTreeIds(folderId, manifest.folders);
+    const foldersById = new Map(manifest.folders.map((item) => [item.id, item]));
+    assertFolderTreeMutable(manifest, folderIds, 'delete');
+    let trashedFolders = 0;
+    let trashedFiles = 0;
+
+    for (const id of folderIds) {
+        const current = foldersById.get(id);
+        if (!current) continue;
+        const trashedFolder: TelegramFolder = {
+            ...current,
+            trashed: true,
+            deletedAt,
+            updatedAt: deletedAt,
+        };
+        replaceManifestFolder(manifest.folders, trashedFolder);
+        rememberLocalFolderLifecycle(trashedFolder, 'trashed');
+        trashedFolders++;
+    }
+
+    for (const [messageId, existing] of Object.entries(manifest.files)) {
+        const recordFolderId = existing.folderId ?? manifest.fileFolders[messageId] ?? null;
+        if (recordFolderId !== null && folderIds.has(recordFolderId)) {
+            const record = moveFileRecordToTrash(manifest, Number(messageId), deletedAt, existing);
+            record.folderId = recordFolderId;
+            manifest.fileFolders[messageId] = recordFolderId;
+            rememberLocalFileLifecycle(record, 'trashed');
+            trashedFiles++;
+        }
+    }
+
+    return {
+        folderIds,
+        folders: Array.from(folderIds).map((id) => foldersById.get(id)).filter(Boolean) as TelegramFolder[],
+        trashedFolders,
+        trashedFiles,
+    };
+}
+
+function moveFileRecordToFolderWithConflict(
+    manifest: DriveManifest,
+    messageId: number,
+    targetFolderId: number | null,
+    conflictStrategy: NameConflictStrategy,
+    updatedAt: string
+): boolean {
+    const key = String(messageId);
+    const record = manifest.files[key];
+    if (!record || record.trashed || record.missing) return false;
+    assertFileMutable(manifest, record, 'move');
+    assertDestinationFolderWritable(manifest, targetFolderId, 'moving items here');
+
+    const effectiveStrategy = conflictStrategy === 'merge' ? 'keep_both' : conflictStrategy;
+    const conflict = findActiveFileNameConflict(manifest, record.name, targetFolderId, messageId);
+    if (conflict) {
+        if (effectiveStrategy === 'skip') return false;
+        if (effectiveStrategy === 'replace') {
+            assertFileMutable(manifest, conflict, 'replace');
+            const trashed = moveFileRecordToTrash(manifest, conflict.messageId, updatedAt, conflict);
+            rememberLocalFileLifecycle(trashed, 'trashed');
+        }
+    }
+
+    const nextName = conflict && effectiveStrategy === 'keep_both'
+        ? createUniqueFileName(manifest, record.name, targetFolderId, messageId)
+        : record.name;
+    manifest.fileFolders[key] = targetFolderId;
+    manifest.files[key] = {
+        ...record,
+        folderId: targetFolderId,
+        name: nextName,
+        updatedAt,
+    };
+    return true;
+}
+
+function mergeFolderInto(
+    manifest: DriveManifest,
+    sourceFolderId: number,
+    targetFolderId: number,
+    updatedAt: string
+): { mergedFolders: number; movedFiles: number } {
+    const source = manifest.folders.find((item) => item.id === sourceFolderId);
+    const target = manifest.folders.find((item) => item.id === targetFolderId);
+    if (!source || !target) return { mergedFolders: 0, movedFiles: 0 };
+    assertFolderTreeMutable(manifest, collectManifestFolderTreeIds(sourceFolderId, manifest.folders), 'merge');
+    assertFolderMutable(manifest, target, 'merge');
+
+    let mergedFolders = 1;
+    let movedFiles = 0;
+
+    for (const record of Object.values(manifest.files)) {
+        const recordFolderId = record.folderId ?? manifest.fileFolders[String(record.messageId)] ?? null;
+        if (recordFolderId !== sourceFolderId || record.trashed || record.missing) continue;
+        if (moveFileRecordToFolderWithConflict(manifest, record.messageId, targetFolderId, 'keep_both', updatedAt)) {
+            movedFiles++;
+        }
+    }
+
+    const childFolders = manifest.folders
+        .filter((folder) => !folder.trashed && (folder.parent_id ?? null) === sourceFolderId)
+        .slice();
+    for (const child of childFolders) {
+        const conflict = findActiveFolderNameConflict(manifest, child.name, targetFolderId, child.id);
+        if (conflict) {
+            const result = mergeFolderInto(manifest, child.id, conflict.id, updatedAt);
+            mergedFolders += result.mergedFolders;
+            movedFiles += result.movedFiles;
+        } else {
+            replaceManifestFolder(manifest.folders, {
+                ...child,
+                parent_id: targetFolderId,
+                updatedAt,
+            });
+            mergedFolders++;
+        }
+    }
+
+    manifest.folders = manifest.folders.filter((folder) => folder.id !== sourceFolderId);
+    forgetLocalFolderLifecycle(sourceFolderId);
+    appendManifestEvent(manifest, 'folder_merged', {
+        sourceFolderId,
+        targetFolderId,
+        name: source.name,
+        mergedFolders,
+        movedFiles,
+    });
+    return { mergedFolders, movedFiles };
+}
+
+function moveFolderToParentWithConflict(
+    manifest: DriveManifest,
+    folderId: number,
+    targetParentId: number | null,
+    conflictStrategy: NameConflictStrategy,
+    updatedAt: string
+): boolean {
+    const folder = manifest.folders.find((item) => item.id === folderId);
+    if (!folder || folder.trashed) return false;
+    assertFolderTreeMutable(manifest, collectManifestFolderTreeIds(folderId, manifest.folders), 'move');
+    assertDestinationFolderWritable(manifest, targetParentId, 'moving items here');
+
+    const conflict = findActiveFolderNameConflict(manifest, folder.name, targetParentId, folderId);
+    if (conflict) {
+        if (conflictStrategy === 'skip') return false;
+        if (conflictStrategy === 'merge') {
+            mergeFolderInto(manifest, folderId, conflict.id, updatedAt);
+            return true;
+        }
+        if (conflictStrategy === 'replace') {
+            const deletedAt = new Date().toISOString();
+            const trashed = trashFolderTreeInManifest(manifest, conflict.id, deletedAt);
+            appendManifestEvent(manifest, 'folder_trashed', {
+                folderId: conflict.id,
+                name: conflict.name,
+                parentId: conflict.parent_id ?? null,
+                folderIds: Array.from(trashed.folderIds),
+                folders: trashed.folders,
+                trashedFiles: trashed.trashedFiles,
+                trashedFolders: trashed.trashedFolders,
+                deletedAt,
+                replacedBy: folderId,
+            });
+        }
+    }
+
+    replaceManifestFolder(manifest.folders, {
+        ...folder,
+        parent_id: targetParentId ?? undefined,
+        name: conflict && conflictStrategy === 'keep_both'
+            ? createUniqueFolderName(manifest, folder.name, targetParentId, folderId)
+            : folder.name,
+        updatedAt,
+    });
+    forgetLocalFolderLifecycle(folderId);
+    return true;
+}
+
 function sortTelegramItemsByUpdatedAt(a: TelegramFile, b: TelegramFile): number {
     const bTime = new Date(b.deletedAt || b.created_at || 0).getTime();
     const aTime = new Date(a.deletedAt || a.created_at || 0).getTime();
@@ -2644,7 +3369,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.1.7-web',
+        appVersion: '1.1.8-web',
     });
 
     await client.connect();
@@ -2684,6 +3409,9 @@ function toTelegramFile(message: TelegramMessage, manifest?: DriveManifest): Tel
         starred: record?.starred || false,
         pinned: record?.pinned || false,
         color: record?.color,
+        locked: record?.locked || false,
+        protected: record?.protected || false,
+        protectionHint: record?.protectionHint,
         trashed: record?.trashed || false,
         deletedAt: record?.deletedAt,
         missing: record?.missing || false,
@@ -2715,6 +3443,9 @@ function recordToTelegramFile(record: DriveFileRecord): TelegramFile {
         starred: record.starred || false,
         pinned: record.pinned || false,
         color: record.color,
+        locked: record.locked || false,
+        protected: record.protected || false,
+        protectionHint: record.protectionHint,
         trashed: record.trashed || false,
         deletedAt: record.deletedAt,
         missing: record.missing || false,
@@ -2743,6 +3474,9 @@ function folderToExplorerFile(folder: TelegramFolder, manifest: DriveManifest): 
         starred: folder.starred || false,
         pinned: folder.pinned || false,
         color: folder.color,
+        locked: folder.locked || false,
+        protected: folder.protected || false,
+        protectionHint: folder.protectionHint,
         trashed: folder.trashed || false,
         deletedAt: folder.deletedAt,
     };
@@ -2769,6 +3503,9 @@ function folderToTrashFile(folder: TelegramFolder, manifest: DriveManifest): Tel
         starred: folder.starred || false,
         pinned: folder.pinned || false,
         color: folder.color,
+        locked: folder.locked || false,
+        protected: folder.protected || false,
+        protectionHint: folder.protectionHint,
         trashed: true,
         deletedAt,
     };
@@ -3173,6 +3910,13 @@ function createVirtualFolderId(): number {
 
 async function sha256Blob(blob: Blob): Promise<string> {
     const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+    return Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join('');
+}
+
+async function sha256Text(text: string): Promise<string> {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
     return Array.from(new Uint8Array(digest))
         .map((byte) => byte.toString(16).padStart(2, '0'))
         .join('');
