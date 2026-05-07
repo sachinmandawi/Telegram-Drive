@@ -10,6 +10,8 @@ export interface TelegramFile {
     file_ext?: string;
     tags?: string[];
     starred?: boolean;
+    pinned?: boolean;
+    color?: string;
     trashed?: boolean;
     deletedAt?: string;
     missing?: boolean;
@@ -24,7 +26,7 @@ export interface TelegramFile {
     integrityStatus?: 'unknown' | 'valid' | 'mismatch';
 }
 
-export type DriveView = 'files' | 'starred' | 'trash' | 'gallery' | 'media';
+export type DriveView = 'files' | 'starred' | 'trash' | 'gallery' | 'media' | 'recent' | 'quick';
 
 export interface TelegramFolder {
     id: number;
@@ -33,6 +35,12 @@ export interface TelegramFolder {
     trashed?: boolean;
     deletedAt?: string;
     updatedAt?: string;
+    starred?: boolean;
+    pinned?: boolean;
+    color?: string;
+    size?: number;
+    sizeStr?: string;
+    itemCount?: number;
 }
 
 export interface QueueItem {

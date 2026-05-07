@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.6] - 2026-05-07
+
+### Google Drive Logic Pack
+
+- Fixed Trash folder restore from the website by preserving backend folder item types in the frontend list mapper.
+- Added Undo after delete, bulk restore, Trash folder drill-down, and missing-parent restore fallback to root.
+- Added folder move, drag-and-drop folder move, rename, folder sizes, clickable breadcrumbs, and duplicate-name conflict handling.
+- Added Recent and Quick Access views with pin support, folder starring, folder colors, advanced search chips, and current-folder/all-drive search scope.
+- Added version history lookup, activity log, and cleanup suggestions in Drive Tools.
+- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.6.
+
 ## [1.1.5] - 2026-05-07
 
 ### Google Drive-Style Folder Trash

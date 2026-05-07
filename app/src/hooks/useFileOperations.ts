@@ -30,7 +30,16 @@ export function useFileOperations(
                 await invokeCommand('cmd_flush_manifest').catch(() => undefined);
             }
             queryClient.invalidateQueries({ queryKey: ['files'] });
-            toast.success("File moved to Trash");
+            toast.success("File moved to Trash", {
+                action: {
+                    label: 'Undo',
+                    onClick: () => {
+                        void invokeCommand('cmd_restore_file', { messageId: id, itemType: 'file' })
+                            .then(() => queryClient.invalidateQueries({ queryKey: ['files'] }))
+                            .catch((err) => toast.error(`Undo failed: ${err}`));
+                    },
+                },
+            });
         } catch (e) {
             toast.error(`Delete failed: ${e}`);
         }

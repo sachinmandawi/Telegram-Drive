@@ -33,6 +33,10 @@ interface FileExplorerProps {
     onRestore?: (file: TelegramFile) => void;
     onEditTags?: (file: TelegramFile) => void;
     onVerify?: (file: TelegramFile) => void;
+    onRename?: (file: TelegramFile) => void;
+    onTogglePin?: (file: TelegramFile) => void;
+    onSetFolderColor?: (file: TelegramFile, color: string) => void;
+    onShowVersions?: (file: TelegramFile) => void;
 }
 
 
@@ -64,7 +68,7 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
 
 export function FileExplorer({
     files, loading, error, viewMode, selectedIds, activeFolderId,
-    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onToggleStar, onRestore, onEditTags, onVerify
+    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onToggleStar, onRestore, onEditTags, onVerify, onRename, onTogglePin, onSetFolderColor, onShowVersions
 }: FileExplorerProps) {
     const [sortField, setSortField] = useState<SortField>('name');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -397,6 +401,22 @@ export function FileExplorer({
                     } : undefined}
                     onVerify={onVerify ? () => {
                         onVerify(contextMenu.file);
+                        setContextMenu(null);
+                    } : undefined}
+                    onRename={onRename ? () => {
+                        onRename(contextMenu.file);
+                        setContextMenu(null);
+                    } : undefined}
+                    onTogglePin={onTogglePin ? () => {
+                        onTogglePin(contextMenu.file);
+                        setContextMenu(null);
+                    } : undefined}
+                    onSetFolderColor={onSetFolderColor ? (color) => {
+                        onSetFolderColor(contextMenu.file, color);
+                        setContextMenu(null);
+                    } : undefined}
+                    onShowVersions={onShowVersions ? () => {
+                        onShowVersions(contextMenu.file);
                         setContextMenu(null);
                     } : undefined}
                 />

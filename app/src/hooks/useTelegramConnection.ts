@@ -228,7 +228,20 @@ export function useTelegramConnection(onLogoutParent: () => void) {
                 await store.save();
             }
             if (activeFolderId !== null && folderIdsToDelete.has(activeFolderId)) setActiveFolderId(null);
-            toast.success(savedMessagesDefault ? `Folder "${folderName}" moved to Trash.` : `Folder "${folderName}" deleted.`);
+            if (savedMessagesDefault) {
+                toast.success(`Folder "${folderName}" moved to Trash.`, {
+                    action: {
+                        label: 'Undo',
+                        onClick: () => {
+                            void invokeCommand('cmd_restore_file', { messageId: folderId, itemType: 'folder' })
+                                .then(handleSyncFolders)
+                                .catch((err) => toast.error(`Undo failed: ${err}`));
+                        },
+                    },
+                });
+            } else {
+                toast.success(`Folder "${folderName}" deleted.`);
+            }
         } catch (e: unknown) {
             const errStr = String(e);
             if (errStr.includes("not found")) {

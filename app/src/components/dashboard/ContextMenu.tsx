@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, Star, RotateCcw, Tag, ShieldCheck } from 'lucide-react';
+import { Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, Star, RotateCcw, Tag, ShieldCheck, Pin, History } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { isMediaFile, isPdfFile } from '../../utils';
 
@@ -15,9 +15,13 @@ interface ContextMenuProps {
     onRestore?: () => void;
     onEditTags?: () => void;
     onVerify?: () => void;
+    onRename?: () => void;
+    onTogglePin?: () => void;
+    onSetFolderColor?: (color: string) => void;
+    onShowVersions?: () => void;
 }
 
-export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onToggleStar, onRestore, onEditTags, onVerify }: ContextMenuProps) {
+export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onToggleStar, onRestore, onEditTags, onVerify, onRename, onTogglePin, onSetFolderColor, onShowVersions }: ContextMenuProps) {
     const [adjustedPos, setAdjustedPos] = useState({ x, y });
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -101,10 +105,17 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
                 </button>
             )}
 
-            {file.type !== 'folder' && onToggleStar && (
+            {onToggleStar && (
                 <button onClick={onToggleStar} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
                     <Star className={`w-4 h-4 ${file.starred ? 'text-yellow-400 fill-yellow-400' : 'text-yellow-400'}`} />
                     {file.starred ? 'Unstar' : 'Star'}
+                </button>
+            )}
+
+            {onTogglePin && (
+                <button onClick={onTogglePin} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
+                    <Pin className={`w-4 h-4 ${file.pinned ? 'text-telegram-primary fill-telegram-primary' : 'text-telegram-primary'}`} />
+                    {file.pinned ? 'Unpin' : 'Pin'}
                 </button>
             )}
 
@@ -122,10 +133,31 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
                 </button>
             )}
 
-            <button disabled className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-subtext hover:bg-telegram-hover rounded transition-colors text-left w-full cursor-not-allowed opacity-50">
+            {file.type !== 'folder' && onShowVersions && (
+                <button onClick={onShowVersions} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
+                    <History className="w-4 h-4 text-telegram-primary" />
+                    Versions
+                </button>
+            )}
+
+            <button onClick={onRename} disabled={!onRename || file.trashed} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full disabled:cursor-not-allowed disabled:opacity-50">
                 <Pencil className="w-4 h-4" />
                 Rename
             </button>
+
+            {file.type === 'folder' && onSetFolderColor && !file.trashed && (
+                <div className="flex items-center gap-1 px-2 py-1">
+                    {['#facc15', '#38bdf8', '#4ade80', '#f472b6', '#a78bfa', '#fb7185'].map((color) => (
+                        <button
+                            key={color}
+                            onClick={() => onSetFolderColor(color)}
+                            className="h-5 w-5 rounded-full border border-white/20"
+                            style={{ backgroundColor: color }}
+                            title={color}
+                        />
+                    ))}
+                </div>
+            )}
 
             <div className="h-px bg-telegram-border my-1" />
 

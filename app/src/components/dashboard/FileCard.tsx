@@ -94,7 +94,7 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
         >
             <motion.div
                 layout
-                draggable={!isFolder}
+                draggable
                 onDragStartCapture={(e: React.DragEvent<HTMLDivElement>) => {
                     if (onDragStart) onDragStart(file.id);
                     e.dataTransfer.setData("application/x-telegram-file-id", file.id.toString());
@@ -123,7 +123,7 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
                 ) : (
                     <div className="absolute inset-0 flex items-center justify-center p-4">
                         {isFolder ? (
-                            <Folder className="w-12 h-12 text-telegram-primary" />
+                            <Folder className="w-12 h-12" style={{ color: file.color || undefined }} />
                         ) : thumbnailLoading && isImageFile(file) ? (
                             <div className="w-8 h-8 border-2 border-telegram-primary/30 border-t-telegram-primary rounded-full animate-spin" />
                         ) : (
@@ -143,7 +143,7 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
                     {isSelected && <div className="w-1.5 h-1.5 bg-black rounded-full" />}
                 </div>
 
-                {file.starred && !isFolder && (
+                {file.starred && (
                     <div className="absolute top-2 left-9 w-5 h-5 rounded-full bg-black/40 flex items-center justify-center z-10">
                         <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
                     </div>

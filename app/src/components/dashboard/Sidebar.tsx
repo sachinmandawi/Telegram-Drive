@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { HardDrive, Folder, Plus, RefreshCw, LogOut, Star, Trash2, Images, Music2 } from 'lucide-react';
+import { Clock, HardDrive, Folder, Pin, Plus, RefreshCw, LogOut, Star, Trash2, Images, Music2 } from 'lucide-react';
 import { SidebarItem } from './SidebarItem';
 import { BandwidthWidget } from './BandwidthWidget';
 import { getPublicAssetPath } from '../../platform';
@@ -78,6 +78,22 @@ export function Sidebar({
                     label="Gallery"
                     active={activeDriveView === 'gallery'}
                     onClick={() => onDriveViewChange?.('gallery')}
+                    onDrop={() => undefined}
+                    folderId={null}
+                />
+                <SidebarItem
+                    icon={Clock}
+                    label="Recent"
+                    active={activeDriveView === 'recent'}
+                    onClick={() => onDriveViewChange?.('recent')}
+                    onDrop={() => undefined}
+                    folderId={null}
+                />
+                <SidebarItem
+                    icon={Pin}
+                    label="Quick Access"
+                    active={activeDriveView === 'quick'}
+                    onClick={() => onDriveViewChange?.('quick')}
                     onDrop={() => undefined}
                     folderId={null}
                 />

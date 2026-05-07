@@ -28,9 +28,8 @@ export function FileListItem({
         <div
             onClick={(e) => onFileClick(e, file.id)}
             onContextMenu={(e) => handleContextMenu(e, file)}
-            draggable={!isFolder}
+            draggable
             onDragStart={(e) => {
-                if (isFolder) return;
                 if (onDragStart) onDragStart(file.id);
                 e.dataTransfer.setData("application/x-telegram-file-id", file.id.toString());
                 e.dataTransfer.effectAllowed = 'move';
@@ -66,10 +65,10 @@ export function FileListItem({
             `}
         >
             <div className="flex justify-center">
-                {isFolder ? <Folder className="w-5 h-5 text-telegram-primary" /> : <FileTypeIcon filename={file.name} className="w-5 h-5" />}
+                {isFolder ? <Folder className="w-5 h-5" style={{ color: file.color || undefined }} /> : <FileTypeIcon filename={file.name} className="w-5 h-5" />}
             </div>
             <div className="truncate text-sm text-telegram-text font-medium relative pr-8">
-                {file.starred && !isFolder && <Star className="inline w-3 h-3 mr-1 text-yellow-400 fill-yellow-400 align-[-1px]" />}
+                {file.starred && <Star className="inline w-3 h-3 mr-1 text-yellow-400 fill-yellow-400 align-[-1px]" />}
                 {file.name}
                 {!isFolder && file.tags && file.tags.length > 0 && (
                     <span className="ml-2 inline-flex max-w-[14rem] gap-1 align-middle">

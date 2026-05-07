@@ -18,8 +18,13 @@ import {
     telegramGetFiles,
     telegramGetFolders,
     telegramGetDriveStats,
+    telegramGetActivityItems,
+    telegramGetCleanupSuggestions,
+    telegramGetFileVersions,
     telegramGetOfflineCacheStats,
     telegramGetObjectUrl,
+    telegramGetQuickAccessItems,
+    telegramGetRecentItems,
     telegramGetStarredFiles,
     telegramGetTrashFiles,
     telegramExportManifest,
@@ -28,21 +33,25 @@ import {
     telegramListAccounts,
     telegramLogout,
     telegramMoveFiles,
+    telegramMoveFolders,
     telegramPrepareAddAccount,
     telegramPermanentlyDeleteFolder,
     telegramPermanentlyDeleteFile,
     telegramCleanupTrash,
     telegramClearOfflineCache,
     telegramRepairManifest,
+    telegramRenameItem,
     telegramRequestCode,
     telegramRestoreFolder,
     telegramRestoreFile,
     telegramSearchFiles,
+    telegramSetFolderColor,
     telegramSetTrashRetention,
     telegramSignIn,
     telegramSetFileTags,
     telegramSwitchAccount,
-    telegramToggleStarFile,
+    telegramToggleStarItem,
+    telegramTogglePinItem,
     telegramUploadFile,
     telegramVerifyFile,
 } from './telegramBrowser';
@@ -73,6 +82,8 @@ type WebFileRecord = {
     blob: Blob;
     tags?: string[];
     starred?: boolean;
+    pinned?: boolean;
+    color?: string;
     trashed?: boolean;
     deletedAt?: string;
     checksum?: string;
@@ -188,6 +199,12 @@ async function invokeTauriCommand<T>(invoke: TauriInvokeFn, command: string, arg
         }
         case 'cmd_get_trash_files':
             return getLegacyTrashFiles(String(args.query || '')) as T;
+        case 'cmd_get_recent_items':
+        case 'cmd_get_quick_access_items':
+        case 'cmd_get_activity_items':
+        case 'cmd_get_cleanup_suggestions':
+        case 'cmd_get_file_versions':
+            return [] as T;
         case 'cmd_restore_file':
             forgetLegacyTrash(Number(args.messageId));
             return true as T;
@@ -219,6 +236,10 @@ async function invokeTauriCommand<T>(invoke: TauriInvokeFn, command: string, arg
         }
         case 'cmd_set_trash_retention':
         case 'cmd_flush_manifest':
+        case 'cmd_move_folders':
+        case 'cmd_rename_item':
+        case 'cmd_toggle_pin':
+        case 'cmd_set_folder_color':
             return true as T;
         case 'cmd_get_starred_files':
             return [] as T;
@@ -384,6 +405,7 @@ export async function uploadBrowserFile(
         blob: file,
         tags: [],
         starred: false,
+        pinned: false,
         trashed: false,
         checksum,
         integrityStatus: 'unknown',
@@ -475,6 +497,10 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
             return [] as T;
         case 'cmd_get_files':
             return await getWebFiles((args.folderId as number | null | undefined) ?? null) as T;
+        case 'cmd_get_recent_items':
+            return await searchWebFiles(String(args.query || '')) as T;
+        case 'cmd_get_quick_access_items':
+            return [] as T;
         case 'cmd_delete_file':
             await trashWebFile(Number(args.messageId));
             return true as T;
@@ -510,12 +536,21 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
                 (args.targetFolderId as number | null | undefined) ?? null
             );
             return true as T;
+        case 'cmd_move_folders':
+        case 'cmd_rename_item':
+        case 'cmd_toggle_pin':
+        case 'cmd_set_folder_color':
+            return true as T;
         case 'cmd_search_global':
             return await searchWebFiles(String(args.query || '')) as T;
         case 'cmd_get_trash_files':
             return await getWebTrashFiles(String(args.query || '')) as T;
         case 'cmd_get_starred_files':
             return await getWebStarredFiles(String(args.query || '')) as T;
+        case 'cmd_get_activity_items':
+        case 'cmd_get_cleanup_suggestions':
+        case 'cmd_get_file_versions':
+            return [] as T;
         case 'cmd_set_trash_retention':
             return true as T;
         case 'cmd_list_accounts':
@@ -560,14 +595,24 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
             return readBandwidth() as T;
         case 'cmd_get_files':
             return await telegramGetFiles((args.folderId as number | null | undefined) ?? null) as T;
+        case 'cmd_get_recent_items':
+            return await telegramGetRecentItems(String(args.query || '')) as T;
+        case 'cmd_get_quick_access_items':
+            return await telegramGetQuickAccessItems(String(args.query || '')) as T;
         case 'cmd_get_starred_files':
             return await telegramGetStarredFiles(String(args.query || '')) as T;
         case 'cmd_get_trash_files':
-            return await telegramGetTrashFiles(String(args.query || '')) as T;
+            return await telegramGetTrashFiles(String(args.query || ''), typeof args.folderId === 'number' ? args.folderId : null) as T;
         case 'cmd_search_global':
             return await telegramSearchFiles(String(args.query || '')) as T;
         case 'cmd_get_drive_stats':
             return await telegramGetDriveStats() as T;
+        case 'cmd_get_activity_items':
+            return await telegramGetActivityItems(Number(args.limit) || 80) as T;
+        case 'cmd_get_cleanup_suggestions':
+            return await telegramGetCleanupSuggestions() as T;
+        case 'cmd_get_file_versions':
+            return await telegramGetFileVersions(Number(args.messageId)) as T;
         case 'cmd_export_manifest':
             return await telegramExportManifest() as T;
         case 'cmd_import_manifest':
@@ -610,9 +655,24 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
             }
             return await telegramPermanentlyDeleteFile(Number(args.messageId)) as T;
         case 'cmd_toggle_star':
-            return await telegramToggleStarFile(
+            return await telegramToggleStarItem(
                 Number(args.messageId),
+                args.itemType === 'folder' ? 'folder' : 'file',
                 typeof args.starred === 'boolean' ? args.starred : undefined
+            ) as T;
+        case 'cmd_toggle_pin':
+            return await telegramTogglePinItem(
+                Number(args.messageId),
+                args.itemType === 'folder' ? 'folder' : 'file',
+                typeof args.pinned === 'boolean' ? args.pinned : undefined
+            ) as T;
+        case 'cmd_set_folder_color':
+            return await telegramSetFolderColor(Number(args.folderId), String(args.color || '')) as T;
+        case 'cmd_rename_item':
+            return await telegramRenameItem(
+                Number(args.messageId),
+                args.itemType === 'folder' ? 'folder' : 'file',
+                String(args.name || '')
             ) as T;
         case 'cmd_set_tags':
             return await telegramSetFileTags(
@@ -642,6 +702,11 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
             return await telegramMoveFiles(
                 (args.messageIds as number[] | undefined) || [],
                 (args.targetFolderId as number | null | undefined) ?? null
+            ) as T;
+        case 'cmd_move_folders':
+            return await telegramMoveFolders(
+                (args.folderIds as number[] | undefined) || [],
+                (args.targetParentId as number | null | undefined) ?? null
             ) as T;
         case 'cmd_get_stream_info':
             return ({ token: 'browser-telegram', base_url: '' } satisfies StreamInfo) as T;
@@ -696,6 +761,8 @@ function toTelegramFile(record: WebFileRecord): TelegramFile {
         file_ext: record.file_ext,
         tags: record.tags || [],
         starred: record.starred || false,
+        pinned: record.pinned || false,
+        color: record.color,
         trashed: record.trashed || false,
         deletedAt: record.deletedAt,
         checksum: record.checksum,

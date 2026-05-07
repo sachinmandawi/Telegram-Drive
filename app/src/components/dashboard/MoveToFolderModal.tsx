@@ -6,9 +6,11 @@ interface MoveToFolderModalProps {
     onClose: () => void;
     onSelect: (id: number | null) => void;
     activeFolderId: number | null;
+    excludedFolderIds?: number[];
 }
 
-export function MoveToFolderModal({ folders, onClose, onSelect, activeFolderId }: MoveToFolderModalProps) {
+export function MoveToFolderModal({ folders, onClose, onSelect, activeFolderId, excludedFolderIds = [] }: MoveToFolderModalProps) {
+    const excluded = new Set(excludedFolderIds);
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
             <div className="bg-telegram-surface border border-telegram-border rounded-xl w-80 shadow-2xl overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
@@ -31,6 +33,7 @@ export function MoveToFolderModal({ folders, onClose, onSelect, activeFolderId }
 
                     {folders.map((f) => {
                         if (f.id === activeFolderId) return null;
+                        if (excluded.has(f.id)) return null;
                         return (
                             <button
                                 key={f.id}

@@ -50,20 +50,26 @@ export function DriveToolsModal({
     const [stats, setStats] = useState<DriveStats | null>(null);
     const [cacheStats, setCacheStats] = useState<OfflineCacheStats | null>(null);
     const [accounts, setAccounts] = useState<TelegramAccountInfo[]>([]);
+    const [activity, setActivity] = useState<{ id: number; name: string; sizeStr: string; created_at?: string }[]>([]);
+    const [cleanup, setCleanup] = useState<{ id: number; name: string; sizeStr: string }[]>([]);
     const [retentionDays, setRetentionDays] = useState(30);
     const [busy, setBusy] = useState<string | null>(null);
     const importInputRef = useRef<HTMLInputElement>(null);
     const update = useUpdateCheck();
 
     const refresh = async () => {
-        const [nextStats, nextCache, nextAccounts] = await Promise.all([
+        const [nextStats, nextCache, nextAccounts, nextActivity, nextCleanup] = await Promise.all([
             invokeCommand<DriveStats>('cmd_get_drive_stats'),
             invokeCommand<OfflineCacheStats>('cmd_get_offline_cache_stats'),
             invokeCommand<TelegramAccountInfo[]>('cmd_list_accounts').catch(() => []),
+            invokeCommand<{ id: number; name: string; sizeStr: string; created_at?: string }[]>('cmd_get_activity_items').catch(() => []),
+            invokeCommand<{ id: number; name: string; sizeStr: string }[]>('cmd_get_cleanup_suggestions').catch(() => []),
         ]);
         setStats(nextStats);
         setCacheStats(nextCache);
         setAccounts(nextAccounts);
+        setActivity(nextActivity);
+        setCleanup(nextCleanup);
         setRetentionDays(nextStats.trashRetentionDays || 30);
     };
 
@@ -237,6 +243,32 @@ export function DriveToolsModal({
                             <button onClick={() => cleanupTrash(true)} disabled={busy === 'trash'} className="tool-btn-danger">
                                 Empty Trash
                             </button>
+                        </div>
+                    </section>
+
+                    <section className="rounded-lg border border-telegram-border p-4">
+                        <Header icon={<Database className="h-4 w-4" />} title="Cleanup Suggestions" />
+                        <div className="mt-3 space-y-2">
+                            {cleanup.slice(0, 6).map((item) => (
+                                <div key={item.id} className="flex items-center justify-between rounded-md bg-telegram-hover px-3 py-2 text-xs text-telegram-subtext">
+                                    <span className="truncate pr-3">{item.name}</span>
+                                    <span>{item.sizeStr}</span>
+                                </div>
+                            ))}
+                            {cleanup.length === 0 && <p className="text-sm text-telegram-subtext">No cleanup suggestions yet.</p>}
+                        </div>
+                    </section>
+
+                    <section className="rounded-lg border border-telegram-border p-4">
+                        <Header icon={<ArchiveRestore className="h-4 w-4" />} title="Activity Log" />
+                        <div className="mt-3 max-h-52 space-y-2 overflow-auto pr-1">
+                            {activity.slice(0, 10).map((item) => (
+                                <div key={item.id} className="rounded-md bg-telegram-hover px-3 py-2 text-xs text-telegram-subtext">
+                                    <div className="truncate text-telegram-text">{item.name}</div>
+                                    <div>{item.created_at || item.sizeStr}</div>
+                                </div>
+                            ))}
+                            {activity.length === 0 && <p className="text-sm text-telegram-subtext">No activity yet.</p>}
                         </div>
                     </section>
 
