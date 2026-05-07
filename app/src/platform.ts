@@ -83,6 +83,16 @@ const FILE_STORE = 'files';
 const STORE_PREFIX = 'telegram-drive-store:';
 const NEXT_ID_KEY = 'telegram-drive-web-next-id';
 const BANDWIDTH_KEY = 'telegram-drive-web-bandwidth';
+const LEGACY_TRASH_KEY = 'telegram-drive-legacy-trash';
+
+type TauriInvokeFn = <T>(command: string, args?: CommandArgs) => Promise<T>;
+
+type LegacyTelegramFile = TelegramFile & {
+    folder_id?: number | null;
+    icon_type?: string;
+    created_at?: string;
+    deletedAt?: string;
+};
 
 export const isTauriRuntime = () =>
     typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -150,10 +160,156 @@ export async function invokeCommand<T>(command: string, args: CommandArgs = {}):
 
     if (isTauriRuntime()) {
         const { invoke } = await import('@tauri-apps/api/core');
-        return await invoke<T>(command, args);
+        return await invokeTauriCommand<T>(invoke, command, args);
     }
 
     return await invokeBrowserCommand<T>(command, args);
+}
+
+async function invokeTauriCommand<T>(invoke: TauriInvokeFn, command: string, args: CommandArgs): Promise<T> {
+    switch (command) {
+        case 'cmd_get_files': {
+            const files = await invoke<LegacyTelegramFile[]>(command, args);
+            return filterLegacyActiveFiles(files) as T;
+        }
+        case 'cmd_search_global': {
+            const files = await invoke<LegacyTelegramFile[]>(command, args);
+            return filterLegacyActiveFiles(files) as T;
+        }
+        case 'cmd_delete_file': {
+            const messageId = Number(args.messageId);
+            const folderId = normalizeFolderId(args.folderId);
+            const file = await findLegacyFile(invoke, messageId, folderId);
+            rememberLegacyTrash(file || createLegacyTrashPlaceholder(messageId, folderId));
+            return true as T;
+        }
+        case 'cmd_get_trash_files':
+            return getLegacyTrashFiles(String(args.query || '')) as T;
+        case 'cmd_restore_file':
+            forgetLegacyTrash(Number(args.messageId));
+            return true as T;
+        case 'cmd_permanent_delete_file': {
+            const messageId = Number(args.messageId);
+            const trashed = readLegacyTrash()[String(messageId)];
+            const folderId = normalizeFolderId(args.folderId ?? trashed?.folderId ?? trashed?.folder_id);
+            await invoke<boolean>('cmd_delete_file', { messageId, folderId });
+            forgetLegacyTrash(messageId);
+            return true as T;
+        }
+        case 'cmd_cleanup_trash': {
+            const trash = readLegacyTrash();
+            let deleted = 0;
+            let failed = 0;
+            for (const record of Object.values(trash)) {
+                try {
+                    await invoke<boolean>('cmd_delete_file', {
+                        messageId: record.id,
+                        folderId: normalizeFolderId(record.folderId ?? record.folder_id),
+                    });
+                    forgetLegacyTrash(record.id);
+                    deleted++;
+                } catch {
+                    failed++;
+                }
+            }
+            return { deleted, failed } as T;
+        }
+        case 'cmd_set_trash_retention':
+        case 'cmd_flush_manifest':
+            return true as T;
+        case 'cmd_get_starred_files':
+            return [] as T;
+        default:
+            return await invoke<T>(command, args);
+    }
+}
+
+function readLegacyTrash(): Record<string, LegacyTelegramFile> {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(LEGACY_TRASH_KEY) || '{}') as Record<string, LegacyTelegramFile>;
+        return Object.fromEntries(Object.entries(parsed || {}).filter(([key, record]) => {
+            const id = Number(record?.id || key);
+            return Number.isFinite(id);
+        }));
+    } catch {
+        return {};
+    }
+}
+
+function writeLegacyTrash(records: Record<string, LegacyTelegramFile>) {
+    localStorage.setItem(LEGACY_TRASH_KEY, JSON.stringify(records));
+}
+
+function rememberLegacyTrash(file: LegacyTelegramFile) {
+    const records = readLegacyTrash();
+    const folderId = normalizeFolderId(file.folderId ?? file.folder_id);
+    records[String(file.id)] = {
+        ...file,
+        folderId,
+        folder_id: folderId,
+        type: 'file',
+        icon_type: file.icon_type || 'file',
+        trashed: true,
+        deletedAt: new Date().toISOString(),
+        sizeStr: file.sizeStr || formatBytes(file.size || 0),
+    };
+    writeLegacyTrash(records);
+}
+
+function forgetLegacyTrash(messageId: number) {
+    const records = readLegacyTrash();
+    delete records[String(messageId)];
+    writeLegacyTrash(records);
+}
+
+function getLegacyTrashFiles(query: string): LegacyTelegramFile[] {
+    const normalized = query.trim().toLowerCase();
+    return Object.values(readLegacyTrash())
+        .filter((record) => !normalized || [
+            record.name,
+            record.mime_type,
+            record.file_ext,
+        ].filter(Boolean).join(' ').toLowerCase().includes(normalized))
+        .sort((a, b) => new Date(b.deletedAt || b.created_at || 0).getTime() - new Date(a.deletedAt || a.created_at || 0).getTime());
+}
+
+function filterLegacyActiveFiles(files: LegacyTelegramFile[]): LegacyTelegramFile[] {
+    const trash = readLegacyTrash();
+    return files.filter((file) => !trash[String(file.id)]);
+}
+
+async function findLegacyFile(
+    invoke: TauriInvokeFn,
+    messageId: number,
+    folderId: number | null
+): Promise<LegacyTelegramFile | null> {
+    try {
+        const files = await invoke<LegacyTelegramFile[]>('cmd_get_files', { folderId });
+        return files.find((file) => Number(file.id) === messageId) || null;
+    } catch {
+        return null;
+    }
+}
+
+function createLegacyTrashPlaceholder(messageId: number, folderId: number | null): LegacyTelegramFile {
+    return {
+        id: messageId,
+        name: `Telegram-file-${messageId}`,
+        size: 0,
+        sizeStr: formatBytes(0),
+        created_at: '',
+        type: 'file',
+        icon_type: 'file',
+        folderId,
+        folder_id: folderId,
+        trashed: true,
+    };
+}
+
+function normalizeFolderId(value: unknown): number | null {
+    if (value === undefined || value === null) return null;
+    const folderId = Number(value);
+    return Number.isFinite(folderId) ? folderId : null;
 }
 
 export async function listenEvent<T>(eventName: string, handler: EventHandler<T>): Promise<() => void> {

@@ -25,7 +25,7 @@ Telegram Drive leverages the Telegram API to allow you to upload, organize, and 
 *   **Offline Cache**: Recently downloaded Telegram files are cached locally for faster repeat opens.
 *   **Integrity Checks**: Upload checksums are stored, downloads can be verified, and mismatches are flagged in the UI.
 *   **OCR & Preview Search**: Images can be OCR indexed, and text-like previews support quick in-file search.
-*   **Trash & Restore**: Delete safely with recoverable trash, then permanently delete only when needed.
+*   **Sync-Safe Trash & Restore**: Delete safely with recoverable trash; Sync/Repair keeps trashed files out of active lists until you restore or delete forever.
 *   **Retryable Queues**: Failed or cancelled uploads/downloads can be retried without rebuilding the queue.
 *   **Multi-Account Sessions**: Keep separate Telegram account manifests and switch accounts from Drive Tools.
 *   **High Performance Grid**: Virtual scrolling handles folders with thousands of files instantly.

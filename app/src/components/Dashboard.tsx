@@ -473,7 +473,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             if (!file) return;
             const ok = await confirm({
                 title: "Delete Forever",
-                message: `Permanently delete "${file.name}" from Telegram Saved Messages? This cannot be restored by Telegram Drive.`,
+                message: `Permanently delete "${file.name}"? This cannot be restored by Telegram Drive.`,
                 confirmText: "Delete Forever",
                 variant: 'danger'
             });
@@ -604,7 +604,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
         const ok = await confirm({
             title: "Delete Forever",
-            message: `Permanently delete ${selectedIds.length} file(s) from Telegram Saved Messages?`,
+            message: `Permanently delete ${selectedIds.length} file(s)?`,
             confirmText: "Delete Forever",
             variant: 'danger'
         });
@@ -627,7 +627,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }, [confirm, driveView, handleBulkDelete, queryClient, selectedIds]);
 
     const handleRestoreFile = useCallback(async (file: TelegramFile) => {
-        if (!savedMessagesDefault || file.type === 'folder') return;
+        if (file.type === 'folder') return;
 
         try {
             await invokeCommand('cmd_restore_file', { messageId: file.id });

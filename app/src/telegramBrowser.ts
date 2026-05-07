@@ -25,6 +25,7 @@ const STORE_PREFIX = 'telegram-drive-store:';
 const FOLDER_MAP_KEY = 'telegram-drive-telegram-folder-map';
 const NEXT_FOLDER_ID_KEY = 'telegram-drive-next-virtual-folder-id';
 const MANIFEST_CACHE_KEY = 'telegram-drive-telegram-manifest-cache';
+const FILE_LIFECYCLE_KEY = 'telegram-drive-local-file-lifecycle';
 const DRIVE_ID_KEY = 'telegram-drive-persistent-drive-id';
 const ACTIVE_ACCOUNT_KEY = 'telegram-drive-active-account';
 const ACCOUNT_REGISTRY_KEY = 'telegram-drive-account-registry';
@@ -133,6 +134,14 @@ type DriveManifest = {
     events: DriveEvent[];
     backups: DriveManifestBackup[];
     settings: DriveManifestSettings;
+};
+
+type LocalFileLifecycle = {
+    messageId: number;
+    state: 'trashed' | 'deleted';
+    updatedAt: string;
+    deletedAt?: string;
+    record?: DriveFileRecord;
 };
 
 let clientPromise: Promise<TelegramClientInstance> | null = null;
@@ -371,7 +380,11 @@ export async function telegramSearchFiles(query: string): Promise<TelegramFile[]
 
     const filters = parseSmartSearchQuery(query);
     return Object.values(manifest.files)
-        .filter((record) => matchesSmartSearch(record, filters))
+        .filter((record) => {
+            if (filters.trashed === undefined && record.trashed) return false;
+            if (record.missing && !record.trashed) return false;
+            return matchesSmartSearch(record, filters);
+        })
         .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
         .map((record) => {
             const message = byMessageId.get(record.messageId);
@@ -384,7 +397,7 @@ export async function telegramGetStarredFiles(query?: string): Promise<TelegramF
 }
 
 export async function telegramGetTrashFiles(query?: string): Promise<TelegramFile[]> {
-    return await telegramGetFilesByRecord((record) => Boolean(record.trashed) && !record.missing, query);
+    return await telegramGetFilesByRecord((record) => Boolean(record.trashed), query);
 }
 
 export async function telegramDeleteFile(messageId: number): Promise<boolean> {
@@ -395,7 +408,8 @@ export async function telegramDeleteFile(messageId: number): Promise<boolean> {
         ensureManifestFileRecord(manifest, message);
     }
     const existing = manifest.files[key];
-    manifest.files[key] = {
+    const deletedAt = new Date().toISOString();
+    const record = {
         ...(existing || {
             messageId,
             folderId: manifest.fileFolders[key] ?? null,
@@ -403,11 +417,14 @@ export async function telegramDeleteFile(messageId: number): Promise<boolean> {
             size: 0,
         }),
         trashed: true,
-        deletedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        deletedAt,
+        missing: false,
+        updatedAt: deletedAt,
     };
+    manifest.files[key] = record;
     manifest.fileFolders[key] = manifest.files[key].folderId ?? null;
-    appendManifestEvent(manifest, 'file_trashed', { messageId });
+    rememberLocalFileLifecycle(record, 'trashed');
+    appendManifestEvent(manifest, 'file_trashed', createFileLifecyclePayload(record));
     await saveDriveManifest(manifest, 'debounced');
     return true;
 }
@@ -422,9 +439,11 @@ export async function telegramRestoreFile(messageId: number): Promise<boolean> {
         ...existing,
         trashed: false,
         deletedAt: undefined,
+        missing: false,
         updatedAt: new Date().toISOString(),
     };
     manifest.fileFolders[key] = manifest.files[key].folderId ?? null;
+    forgetLocalFileLifecycle(messageId);
     appendManifestEvent(manifest, 'file_restored', { messageId });
     await saveDriveManifest(manifest, 'debounced');
     return true;
@@ -434,8 +453,13 @@ export async function telegramPermanentlyDeleteFile(messageId: number): Promise<
     const client = await authorizedTelegramClient();
     await client.deleteMessages('me', [messageId], { revoke: true });
     const manifest = await getDriveManifest();
-    delete manifest.fileFolders[String(messageId)];
-    delete manifest.files[String(messageId)];
+    const key = String(messageId);
+    const record = manifest.files[key] || readLocalFileLifecycle()[key]?.record;
+    if (record) {
+        rememberLocalFileLifecycle(record, 'deleted');
+    }
+    delete manifest.fileFolders[key];
+    delete manifest.files[key];
     appendManifestEvent(manifest, 'file_deleted', { messageId });
     await saveDriveManifest(manifest, 'debounced');
     return true;
@@ -656,6 +680,7 @@ export async function telegramCleanupTrash(days?: number, deleteAll = false): Pr
     for (const record of candidates) {
         try {
             await client.deleteMessages('me', [record.messageId], { revoke: true });
+            rememberLocalFileLifecycle(record, 'deleted');
             delete manifest.fileFolders[String(record.messageId)];
             delete manifest.files[String(record.messageId)];
             await deleteOfflineCachedBlob(record.messageId).catch(() => undefined);
@@ -742,6 +767,7 @@ export async function telegramRepairManifest(): Promise<{
     const client = await authorizedTelegramClient();
     const messages = await getSavedMessages(client);
     const manifest = await getDriveManifest(true);
+    const localLifecycle = readLocalFileLifecycle();
     const seen = new Set<string>();
     let indexed = 0;
     let refreshed = 0;
@@ -750,6 +776,7 @@ export async function telegramRepairManifest(): Promise<{
     for (const message of messages) {
         if (!message?.media || !message.file || isDriveManifestMessage(message)) continue;
         const key = String(message.id);
+        if (localLifecycle[key]?.state === 'deleted') continue;
         seen.add(key);
         const before = manifest.files[key];
         const record = createFileRecordFromMessage(message, manifest);
@@ -933,6 +960,10 @@ async function getTelegramMessage(messageId: number): Promise<TelegramMessage> {
 async function getDriveManifest(forceRemote = false): Promise<DriveManifest> {
     if (manifestCache && !forceRemote) return cloneManifest(manifestCache);
 
+    if (forceRemote) {
+        await flushRemoteManifest().catch(() => undefined);
+    }
+
     const remote = await loadRemoteManifest();
     const local = loadLocalManifest();
     const manifest = remote ? mergeManifests(remote, local) : local;
@@ -940,7 +971,7 @@ async function getDriveManifest(forceRemote = false): Promise<DriveManifest> {
         ? hasManifestData(local)
         : JSON.stringify(normalizeManifest(remote)) !== JSON.stringify(normalizeManifest(manifest));
 
-    manifestCache = normalizeManifest(manifest);
+    manifestCache = applyLocalFileLifecycleToManifest(normalizeManifest(manifest));
     persistManifestLocally(manifestCache);
 
     if (shouldWriteRemote) {
@@ -951,7 +982,7 @@ async function getDriveManifest(forceRemote = false): Promise<DriveManifest> {
 }
 
 async function saveDriveManifest(manifest: DriveManifest, mode: 'immediate' | 'debounced' = 'immediate'): Promise<void> {
-    const normalized = normalizeManifest({
+    const normalized = applyLocalFileLifecycleToManifest(normalizeManifest({
         ...manifest,
         updatedAt: new Date().toISOString(),
         snapshotSeq: (manifest.snapshotSeq || 0) + 1,
@@ -959,7 +990,7 @@ async function saveDriveManifest(manifest: DriveManifest, mode: 'immediate' | 'd
             { at: manifest.updatedAt || new Date().toISOString(), size: Object.keys(manifest.files || {}).length },
             ...(manifest.backups || []),
         ].slice(0, MANIFEST_BACKUP_COUNT),
-    });
+    }));
     manifestCache = normalized;
     persistManifestLocally(normalized);
 
@@ -1134,6 +1165,118 @@ function parseManifestJson(payload: string): DriveManifest | null {
     } catch {
         return null;
     }
+}
+
+function readLocalFileLifecycle(): Record<string, LocalFileLifecycle> {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(scopedKey(FILE_LIFECYCLE_KEY)) || '{}') as Record<string, LocalFileLifecycle>;
+        const normalized: Record<string, LocalFileLifecycle> = {};
+        for (const [key, entry] of Object.entries(parsed || {})) {
+            const messageId = Number(entry?.messageId || key);
+            if (!Number.isFinite(messageId) || (entry.state !== 'trashed' && entry.state !== 'deleted')) continue;
+            const record = entry.record ? normalizeLifecycleRecord(messageId, entry.record) : undefined;
+            normalized[String(messageId)] = {
+                messageId,
+                state: entry.state,
+                updatedAt: typeof entry.updatedAt === 'string' ? entry.updatedAt : new Date().toISOString(),
+                deletedAt: typeof entry.deletedAt === 'string' ? entry.deletedAt : undefined,
+                record,
+            };
+        }
+        return normalized;
+    } catch {
+        return {};
+    }
+}
+
+function writeLocalFileLifecycle(entries: Record<string, LocalFileLifecycle>) {
+    localStorage.setItem(scopedKey(FILE_LIFECYCLE_KEY), JSON.stringify(entries));
+}
+
+function rememberLocalFileLifecycle(record: DriveFileRecord, state: LocalFileLifecycle['state']) {
+    const entries = readLocalFileLifecycle();
+    const updatedAt = new Date().toISOString();
+    const key = String(record.messageId);
+    entries[key] = {
+        messageId: record.messageId,
+        state,
+        updatedAt,
+        deletedAt: state === 'trashed' ? (record.deletedAt || updatedAt) : updatedAt,
+        record: cloneFileRecord({
+            ...record,
+            trashed: state === 'trashed',
+            deletedAt: state === 'trashed' ? (record.deletedAt || updatedAt) : record.deletedAt,
+            updatedAt,
+        }),
+    };
+    writeLocalFileLifecycle(entries);
+}
+
+function forgetLocalFileLifecycle(messageId: number) {
+    const entries = readLocalFileLifecycle();
+    delete entries[String(messageId)];
+    writeLocalFileLifecycle(entries);
+}
+
+function applyLocalFileLifecycleToManifest(manifest: DriveManifest): DriveManifest {
+    const normalized = cloneManifest(manifest);
+    const entries = readLocalFileLifecycle();
+
+    for (const [key, entry] of Object.entries(entries)) {
+        if (entry.state === 'deleted') {
+            delete normalized.files[key];
+            delete normalized.fileFolders[key];
+            continue;
+        }
+
+        const baseRecord = normalized.files[key] || entry.record;
+        if (!baseRecord) continue;
+        const deletedAt = entry.deletedAt || baseRecord.deletedAt || entry.updatedAt;
+        normalized.files[key] = {
+            ...baseRecord,
+            messageId: entry.messageId,
+            trashed: true,
+            missing: false,
+            deletedAt,
+            updatedAt: laterTimestamp(baseRecord.updatedAt, entry.updatedAt),
+        };
+        normalized.fileFolders[key] = normalized.files[key].folderId ?? normalized.fileFolders[key] ?? null;
+    }
+
+    return normalized;
+}
+
+function normalizeLifecycleRecord(messageId: number, record: Partial<DriveFileRecord>): DriveFileRecord {
+    const folderId = record.folderId === undefined || record.folderId === null
+        ? null
+        : Number(record.folderId);
+    return {
+        messageId,
+        folderId: Number.isFinite(folderId as number) ? folderId : null,
+        name: String(record.name || `Telegram-file-${messageId}`),
+        size: Number(record.size) || 0,
+        createdAt: typeof record.createdAt === 'string' ? record.createdAt : undefined,
+        updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : undefined,
+        mimeType: typeof record.mimeType === 'string' ? record.mimeType : undefined,
+        tags: normalizeTags(record.tags || []),
+        starred: Boolean(record.starred),
+        trashed: Boolean(record.trashed),
+        deletedAt: typeof record.deletedAt === 'string' ? record.deletedAt : undefined,
+        missing: Boolean(record.missing),
+        checksum: typeof record.checksum === 'string' ? record.checksum : undefined,
+        originalPath: typeof record.originalPath === 'string' ? record.originalPath : undefined,
+        versionGroup: typeof record.versionGroup === 'string' ? record.versionGroup : undefined,
+        version: record.version === undefined ? undefined : Number(record.version) || undefined,
+        duplicateOf: record.duplicateOf === undefined ? undefined : Number(record.duplicateOf) || undefined,
+        textIndex: typeof record.textIndex === 'string' ? record.textIndex : undefined,
+        textIndexedAt: typeof record.textIndexedAt === 'string' ? record.textIndexedAt : undefined,
+        ocrText: typeof record.ocrText === 'string' ? record.ocrText : undefined,
+        ocrIndexedAt: typeof record.ocrIndexedAt === 'string' ? record.ocrIndexedAt : undefined,
+        checksumVerifiedAt: typeof record.checksumVerifiedAt === 'string' ? record.checksumVerifiedAt : undefined,
+        integrityStatus: record.integrityStatus === 'valid' || record.integrityStatus === 'mismatch'
+            ? record.integrityStatus
+            : 'unknown',
+    };
 }
 
 function normalizeManifest(manifest: Partial<DriveManifest>): DriveManifest {
@@ -1335,27 +1478,53 @@ function applyFileLifecycleEvents(
             continue;
         }
 
-        const record = normalized[key];
+        const record = normalized[key] || createRecordFromLifecycleEvent(event, messageId, fileFolders);
         if (!record) continue;
 
         if (event.type === 'file_trashed') {
             normalized[key] = {
                 ...record,
                 trashed: true,
+                missing: false,
                 deletedAt: record.deletedAt || event.at,
                 updatedAt: laterTimestamp(record.updatedAt, event.at),
             };
+            fileFolders[key] = normalized[key].folderId ?? fileFolders[key] ?? null;
         } else if (event.type === 'file_restored') {
             normalized[key] = {
                 ...record,
                 trashed: false,
                 deletedAt: undefined,
+                missing: false,
                 updatedAt: laterTimestamp(record.updatedAt, event.at),
             };
+            fileFolders[key] = normalized[key].folderId ?? fileFolders[key] ?? null;
         }
     }
 
     return normalized;
+}
+
+function createRecordFromLifecycleEvent(
+    event: DriveEvent,
+    messageId: number,
+    fileFolders: Record<string, number | null>
+): DriveFileRecord | null {
+    if (event.type !== 'file_trashed') return null;
+    const payload = event.payload || {};
+    const recordPayload = typeof payload.record === 'object' && payload.record
+        ? payload.record as Partial<DriveFileRecord>
+        : payload as Partial<DriveFileRecord>;
+    return normalizeLifecycleRecord(messageId, {
+        ...recordPayload,
+        messageId,
+        folderId: recordPayload.folderId ?? fileFolders[String(messageId)] ?? null,
+        name: recordPayload.name || `Telegram-file-${messageId}`,
+        size: recordPayload.size || 0,
+        trashed: true,
+        deletedAt: typeof payload.deletedAt === 'string' ? payload.deletedAt : event.at,
+        updatedAt: typeof payload.updatedAt === 'string' ? payload.updatedAt : event.at,
+    });
 }
 
 function normalizeBackups(backups: DriveManifestBackup[]): DriveManifestBackup[] {
@@ -1451,6 +1620,20 @@ function createFileRecordFromMessage(message: TelegramMessage, manifest: DriveMa
         starred: false,
         trashed: false,
         missing: false,
+    };
+}
+
+function createFileLifecyclePayload(record: DriveFileRecord): Record<string, unknown> {
+    return {
+        messageId: record.messageId,
+        folderId: record.folderId,
+        name: record.name,
+        size: record.size,
+        mimeType: record.mimeType,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+        deletedAt: record.deletedAt,
+        record: cloneFileRecord(record),
     };
 }
 
@@ -1565,7 +1748,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.1.2-web',
+        appVersion: '1.1.3-web',
     });
 
     await client.connect();

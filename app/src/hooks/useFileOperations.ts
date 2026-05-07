@@ -19,11 +19,9 @@ export function useFileOperations(
 
     const handleDelete = async (id: number) => {
         if (!await confirm({
-            title: savedMessagesMode ? "Move File to Trash" : "Delete File",
-            message: savedMessagesMode
-                ? "Move this file to Telegram Drive trash? The original Telegram Saved Messages file stays recoverable."
-                : "Are you sure you want to delete this file?",
-            confirmText: savedMessagesMode ? "Move to Trash" : "Delete",
+            title: "Move File to Trash",
+            message: "Move this file to Telegram Drive trash? You can restore it later or delete it forever from Trash.",
+            confirmText: "Move to Trash",
             variant: 'danger'
         })) return;
         try {
@@ -32,7 +30,7 @@ export function useFileOperations(
                 await invokeCommand('cmd_flush_manifest').catch(() => undefined);
             }
             queryClient.invalidateQueries({ queryKey: ['files'] });
-            toast.success(savedMessagesMode ? "File moved to Trash" : "File deleted");
+            toast.success("File moved to Trash");
         } catch (e) {
             toast.error(`Delete failed: ${e}`);
         }
@@ -41,11 +39,9 @@ export function useFileOperations(
     const handleBulkDelete = async () => {
         if (selectedIds.length === 0) return;
         if (!await confirm({
-            title: savedMessagesMode ? "Move Files to Trash" : "Delete Files",
-            message: savedMessagesMode
-                ? `Move ${selectedIds.length} files to Telegram Drive trash? They stay recoverable from Saved Messages.`
-                : `Are you sure you want to delete ${selectedIds.length} files?`,
-            confirmText: savedMessagesMode ? "Move All" : "Delete All",
+            title: "Move Files to Trash",
+            message: `Move ${selectedIds.length} files to Telegram Drive trash? You can restore them later or delete them forever from Trash.`,
+            confirmText: "Move All",
             variant: 'danger'
         })) return;
 
@@ -64,7 +60,7 @@ export function useFileOperations(
         }
         setSelectedIds([]);
         queryClient.invalidateQueries({ queryKey: ['files'] });
-        if (success > 0) toast.success(savedMessagesMode ? `Moved ${success} files to Trash.` : `Deleted ${success} files.`);
+        if (success > 0) toast.success(`Moved ${success} files to Trash.`);
         if (fail > 0) toast.error(`Failed to delete ${fail} files.`);
     }
 

@@ -32,7 +32,7 @@ jobs:
               repo: context.repo.repo,
               tag_name: `v${{ steps.get_version.outputs.VERSION }}`,
               name: `Telegram Drive v${{ steps.get_version.outputs.VERSION }}`,
-              body: `Telegram Drive v${{ steps.get_version.outputs.VERSION }} adds Drive Tools, analytics, manifest export/import, offline cache controls, smart search, tags, Gallery and Media views, checksum verification, OCR indexing, preview search, watch folder sync, retryable queues, multi-account sessions, and configurable trash cleanup.\n\nSee the assets below to download and install.`,
+              body: `Telegram Drive v${{ steps.get_version.outputs.VERSION }} improves delete-to-trash reliability so soft-deleted files stay in Trash and do not return after Sync/Repair. It also includes Drive Tools, analytics, manifest export/import, offline cache controls, smart search, tags, Gallery and Media views, checksum verification, OCR indexing, preview search, watch folder sync, retryable queues, multi-account sessions, and configurable trash cleanup.\n\nSee the assets below to download and install.`,
               draft: true,
               prerelease: false
             });

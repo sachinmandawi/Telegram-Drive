@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.3] - 2026-05-07
+
+### Trash Sync Fix
+
+- Added a local file lifecycle tombstone layer so deleted files stay hidden from active lists even if Sync/Repair reloads an older Telegram manifest.
+- Trash now shows soft-deleted files even when Telegram metadata is temporarily missing, so users can restore or delete forever reliably.
+- Desktop/channel storage now uses the same soft-delete Trash behavior instead of hard-deleting on the first Delete click.
+- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.3.
+
 ## [1.1.2] - 2026-05-06
 
 ### Release Pipeline Recovery
