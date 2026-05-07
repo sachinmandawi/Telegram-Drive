@@ -742,7 +742,8 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
         case 'cmd_create_folder':
             return await telegramCreateFolder(
                 String(args.name || 'New Folder'),
-                typeof args.parentId === 'number' ? args.parentId : null
+                typeof args.parentId === 'number' ? args.parentId : null,
+                typeof args.parentName === 'string' ? args.parentName : undefined
             ) as T;
         case 'cmd_delete_folder':
             return await telegramDeleteFolder(Number(args.folderId)) as T;

@@ -328,19 +328,21 @@ export async function telegramFlushManifest(): Promise<boolean> {
     return true;
 }
 
-export async function telegramCreateFolder(name: string, parentId: number | null = null): Promise<TelegramFolder> {
+export async function telegramCreateFolder(name: string, parentId: number | null = null, parentName?: string): Promise<TelegramFolder> {
     const manifest = await getDriveManifest();
-    assertDestinationFolderWritable(manifest, parentId, 'creating folders here');
-    const safeName = createUniqueFolderName(manifest, name.trim() || 'New Folder', parentId);
+    const normalizedParentId = Number.isFinite(parentId as number) ? parentId : null;
+    ensureCreateFolderParent(manifest, normalizedParentId, parentName);
+    assertDestinationFolderWritable(manifest, normalizedParentId, 'creating folders here');
+    const safeName = createUniqueFolderName(manifest, name.trim() || 'New Folder', normalizedParentId);
     const folder: TelegramFolder = {
         id: createVirtualFolderId(),
         name: safeName,
     };
 
-    if (parentId !== null) folder.parent_id = parentId;
+    if (normalizedParentId !== null) folder.parent_id = normalizedParentId;
     manifest.folders.push(folder);
     forgetLocalFolderLifecycle(folder.id);
-    appendManifestEvent(manifest, 'folder_created', { folderId: folder.id, name: safeName, parentId });
+    appendManifestEvent(manifest, 'folder_created', { folderId: folder.id, name: safeName, parentId: normalizedParentId });
     await saveDriveManifest(manifest, 'debounced');
     return folder;
 }
@@ -3044,6 +3046,26 @@ function assertDestinationFolderWritable(manifest: DriveManifest, folderId: numb
     if (isFolderProtectedAndLocked(folder)) throw new Error(`Folder "${folder.name}" is protected. Unlock it before ${action}.`);
 }
 
+function ensureCreateFolderParent(manifest: DriveManifest, parentId: number | null, parentName?: string) {
+    if (parentId === null) return;
+    const existing = manifest.folders.find((folder) => folder.id === parentId);
+    if (existing) return;
+
+    const restoredParent: TelegramFolder = {
+        id: parentId,
+        name: parentName?.trim() || `Folder ${parentId}`,
+        updatedAt: new Date().toISOString(),
+    };
+    replaceManifestFolder(manifest.folders, restoredParent);
+    forgetLocalFolderLifecycle(parentId);
+    appendManifestEvent(manifest, 'folder_created', {
+        folderId: parentId,
+        name: restoredParent.name,
+        parentId: null,
+        restoredPlaceholder: true,
+    });
+}
+
 function assertFileAccessible(manifest: DriveManifest, record: DriveFileRecord, action: string) {
     if (isFileProtectedAndLocked(record)) throw new Error(`File "${record.name}" is protected. Unlock it before ${action}.`);
     for (const folderId of getManifestFolderAncestryIds(record.folderId ?? null, manifest.folders)) {
@@ -3369,7 +3391,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.1.8-web',
+        appVersion: '1.1.9-web',
     });
 
     await client.connect();

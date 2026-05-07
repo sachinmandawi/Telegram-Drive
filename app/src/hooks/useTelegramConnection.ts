@@ -181,13 +181,21 @@ export function useTelegramConnection(onLogoutParent: () => void) {
     const handleCreateFolder = async (name: string, parentId: number | null = null, silent = false) => {
         if (!store) throw new Error('Settings store is not ready');
         try {
-            const newFolder = await invokeCommand<TelegramFolder>('cmd_create_folder', { name, parentId });
+            const parentFolder = parentId === null
+                ? null
+                : foldersRef.current.find((folder) => folder.id === parentId && !folder.trashed);
+            const targetParentId = parentFolder ? parentId : null;
+            const newFolder = await invokeCommand<TelegramFolder>('cmd_create_folder', {
+                name,
+                parentId: targetParentId,
+                parentName: parentFolder?.name,
+            });
             const updated = mergeFolders([...foldersRef.current, newFolder]);
             foldersRef.current = updated;
             setFolders(updated);
             await store.set('folders', updated);
             await store.save();
-            if (!silent) toast.success(`Folder "${name}" created.`);
+            if (!silent) toast.success(`Folder "${newFolder.name || name}" created.`);
             return newFolder;
         } catch (e) {
             toast.error("Failed to create folder: " + e);

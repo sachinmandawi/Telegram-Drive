@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.9] - 2026-05-07
+
+### Nested Folder Create Fix
+
+- Fixed Create Folder failing with `Target folder metadata not found` when the selected parent folder was stale or missing from the refreshed manifest.
+- Create Folder now works from inside folders and preserves the intended parent folder when the folder exists locally.
+- Stale parent selections safely fall back to Saved Messages instead of blocking folder creation.
+- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.9.
+
 ## [1.1.8] - 2026-05-07
 
 ### Drive-Style Safety & Recovery Pack
