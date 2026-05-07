@@ -390,6 +390,10 @@ export async function telegramGetTrashFiles(query?: string): Promise<TelegramFil
 export async function telegramDeleteFile(messageId: number): Promise<boolean> {
     const manifest = await getDriveManifest();
     const key = String(messageId);
+    const message = await getTelegramMessage(messageId).catch(() => null);
+    if (message?.media && message.file) {
+        ensureManifestFileRecord(manifest, message);
+    }
     const existing = manifest.files[key];
     manifest.files[key] = {
         ...(existing || {
@@ -804,19 +808,14 @@ async function telegramGetFilesByRecord(
     predicate: (record: DriveFileRecord) => boolean,
     query?: string
 ): Promise<TelegramFile[]> {
-    const client = await authorizedTelegramClient();
-    const messages = await getSavedMessages(client, query);
     const manifest = await getDriveManifest();
-    const files: TelegramFile[] = [];
+    const filters = parseSmartSearchQuery(query || '');
 
-    for (const message of messages) {
-        if (!message?.media || !message.file || isDriveManifestMessage(message)) continue;
-        const record = ensureManifestFileRecord(manifest, message);
-        if (!predicate(record)) continue;
-        files.push(toTelegramFile(message, manifest));
-    }
-
-    return files;
+    return Object.values(manifest.files)
+        .filter(predicate)
+        .filter((record) => !query || matchesSmartSearch(record, filters))
+        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
+        .map(recordToTelegramFile);
 }
 
 async function getSavedMessages(client: TelegramClientInstance, query?: string): Promise<TelegramMessage[]> {
@@ -1139,7 +1138,12 @@ function parseManifestJson(payload: string): DriveManifest | null {
 
 function normalizeManifest(manifest: Partial<DriveManifest>): DriveManifest {
     const fileFolders = normalizeFileFolders(manifest.fileFolders || {});
-    const files = normalizeFileRecords(manifest.files || {}, fileFolders);
+    const events = normalizeEvents(manifest.events || []);
+    const files = applyFileLifecycleEvents(
+        normalizeFileRecords(manifest.files || {}, fileFolders),
+        fileFolders,
+        events
+    );
     for (const [messageId, record] of Object.entries(files)) {
         fileFolders[messageId] = record.folderId ?? fileFolders[messageId] ?? null;
     }
@@ -1155,7 +1159,7 @@ function normalizeManifest(manifest: Partial<DriveManifest>): DriveManifest {
         folders: normalizeFolders(manifest.folders || []),
         fileFolders,
         files,
-        events: normalizeEvents(manifest.events || []),
+        events,
         backups: normalizeBackups(manifest.backups || []),
         settings: {
             trashRetentionDays: Number(manifest.settings?.trashRetentionDays) || 30,
@@ -1301,6 +1305,57 @@ function normalizeEvents(events: DriveEvent[]): DriveEvent[] {
     return Array.from(byId.values())
         .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
         .slice(-MANIFEST_EVENT_LIMIT);
+}
+
+function applyFileLifecycleEvents(
+    files: Record<string, DriveFileRecord>,
+    fileFolders: Record<string, number | null>,
+    events: DriveEvent[]
+): Record<string, DriveFileRecord> {
+    const normalized = Object.fromEntries(
+        Object.entries(files).map(([key, record]) => [key, cloneFileRecord(record)])
+    );
+
+    for (const event of events) {
+        if (
+            event.type !== 'file_trashed'
+            && event.type !== 'file_restored'
+            && event.type !== 'file_deleted'
+        ) {
+            continue;
+        }
+
+        const messageId = Number(event.payload?.messageId);
+        if (!Number.isFinite(messageId)) continue;
+        const key = String(messageId);
+
+        if (event.type === 'file_deleted') {
+            delete normalized[key];
+            delete fileFolders[key];
+            continue;
+        }
+
+        const record = normalized[key];
+        if (!record) continue;
+
+        if (event.type === 'file_trashed') {
+            normalized[key] = {
+                ...record,
+                trashed: true,
+                deletedAt: record.deletedAt || event.at,
+                updatedAt: laterTimestamp(record.updatedAt, event.at),
+            };
+        } else if (event.type === 'file_restored') {
+            normalized[key] = {
+                ...record,
+                trashed: false,
+                deletedAt: undefined,
+                updatedAt: laterTimestamp(record.updatedAt, event.at),
+            };
+        }
+    }
+
+    return normalized;
 }
 
 function normalizeBackups(backups: DriveManifestBackup[]): DriveManifestBackup[] {
@@ -1510,7 +1565,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.1.1-web',
+        appVersion: '1.1.2-web',
     });
 
     await client.connect();

@@ -92,6 +92,9 @@ Telegram Drive leverages the Telegram API to allow you to upload, organize, and 
 > [!TIP]
 > **NPM Vulnerabilities:** You may see vulnerability warnings during `npm install`. These are usually related to build tools and dev dependencies. You can optionally run `npm audit fix`, but it is not strictly required to run the app.
 
+> [!NOTE]
+> **Updater signing:** Tauri in-app update metadata (`latest.json`) requires `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` to be configured in GitHub Secrets. Release installers are published even when updater signing secrets are not available.
+
 ### Installation
 
 1.  **Clone the repository**

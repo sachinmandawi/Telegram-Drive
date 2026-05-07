@@ -28,6 +28,9 @@ export function useFileOperations(
         })) return;
         try {
             await invokeCommand('cmd_delete_file', { messageId: id, folderId: activeFolderId });
+            if (savedMessagesMode) {
+                await invokeCommand('cmd_flush_manifest').catch(() => undefined);
+            }
             queryClient.invalidateQueries({ queryKey: ['files'] });
             toast.success(savedMessagesMode ? "File moved to Trash" : "File deleted");
         } catch (e) {
@@ -55,6 +58,9 @@ export function useFileOperations(
             } catch {
                 fail++;
             }
+        }
+        if (savedMessagesMode && success > 0) {
+            await invokeCommand('cmd_flush_manifest').catch(() => undefined);
         }
         setSelectedIds([]);
         queryClient.invalidateQueries({ queryKey: ['files'] });

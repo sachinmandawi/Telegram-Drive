@@ -1,12 +1,19 @@
 # Changelog
 
+## [1.1.2] - 2026-05-06
+
+### Release Pipeline Recovery
+
+- Restored unsigned desktop release builds while the updater signing private key is not configured in GitHub Secrets.
+- Fixed Saved Messages delete flow so files move into Telegram Drive Trash, appear in the Trash view, and stay trashed after Sync/Repair.
+- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.2.
+
 ## [1.1.1] - 2026-05-06
 
 ### Updater Release Metadata
 
-- Enabled signed updater artifacts in the Tauri bundle configuration.
-- Updated the GitHub release workflow to publish `latest.json` for the in-app updater endpoint.
-- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.1.
+- Attempted signed updater artifact publishing for `latest.json`.
+- This release was not published because the updater signing private key secret is not configured.
 
 ## [1.1.0] - 2026-05-06
 
