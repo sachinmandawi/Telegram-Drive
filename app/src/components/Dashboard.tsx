@@ -704,7 +704,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             return folder;
         };
 
-        const rootFolder = await getOrCreateFolder(folderName, null);
+        const uploadParentId = activeFolderId;
+        const rootFolder = await getOrCreateFolder(folderName, uploadParentId);
         const uploadEntries: { file: File; folderId: number | null }[] = [];
 
         for (const file of files) {
@@ -724,7 +725,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         setDriveView('files');
         queueFileEntries(uploadEntries);
         toast.success(`Folder structure ready: ${uploadEntries.length} file(s), ${knownFolders.length - folders.length} new folder(s).`);
-    }, [folders, handleCreateFolder, isDesktopRuntime, queueFileEntries, savedMessagesDefault, setActiveFolderId]);
+    }, [activeFolderId, folders, handleCreateFolder, isDesktopRuntime, queueFileEntries, savedMessagesDefault, setActiveFolderId]);
 
     const handleExplorerDelete = useCallback(async (id: number) => {
         const folder = folders.find(f => f.id === id);
@@ -918,7 +919,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             await invokeCommand('cmd_copy_item', {
                 messageId: file.id,
                 itemType: file.type || 'file',
-                targetFolderId: file.folderId ?? activeFolderId,
+                targetFolderId: file.folderId === undefined ? activeFolderId : file.folderId,
             });
             queryClient.invalidateQueries({ queryKey: ['files'] });
             await handleSyncFolders();
@@ -985,7 +986,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             });
             setUnlockedProtectedIds((current) => {
                 const next = new Set(current);
-                next.add(protectedItemKey(file));
+                next.delete(protectedItemKey(file));
                 return next;
             });
             queryClient.invalidateQueries({ queryKey: ['files'] });

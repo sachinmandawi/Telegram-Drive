@@ -90,6 +90,10 @@ type WebFileRecord = {
     starred?: boolean;
     pinned?: boolean;
     color?: string;
+    locked?: boolean;
+    protected?: boolean;
+    protectionHash?: string;
+    protectionHint?: string;
     trashed?: boolean;
     deletedAt?: string;
     checksum?: string;
@@ -104,6 +108,7 @@ const STORE_PREFIX = 'telegram-drive-store:';
 const NEXT_ID_KEY = 'telegram-drive-web-next-id';
 const BANDWIDTH_KEY = 'telegram-drive-web-bandwidth';
 const LEGACY_TRASH_KEY = 'telegram-drive-legacy-trash';
+const unlockedWebProtectedItems = new Set<number>();
 
 type TauriInvokeFn = <T>(command: string, args?: CommandArgs) => Promise<T>;
 
@@ -248,11 +253,12 @@ async function invokeTauriCommand<T>(invoke: TauriInvokeFn, command: string, arg
         case 'cmd_rename_item':
         case 'cmd_toggle_pin':
         case 'cmd_toggle_lock':
-        case 'cmd_set_protection':
-        case 'cmd_unlock_item':
         case 'cmd_copy_item':
         case 'cmd_set_folder_color':
             return true as T;
+        case 'cmd_set_protection':
+        case 'cmd_unlock_item':
+            throw new Error('PIN protection requires Saved Messages storage');
         case 'cmd_get_starred_files':
             return [] as T;
         default:
@@ -418,6 +424,8 @@ export async function uploadBrowserFile(
         tags: [],
         starred: false,
         pinned: false,
+        locked: false,
+        protected: false,
         trashed: false,
         checksum,
         integrityStatus: 'unknown',
@@ -548,12 +556,30 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
                 (args.targetFolderId as number | null | undefined) ?? null
             );
             return true as T;
+        case 'cmd_toggle_pin':
+            await updateWebFile(Number(args.messageId), (record) => ({
+                ...record,
+                pinned: typeof args.pinned === 'boolean' ? args.pinned : !record.pinned,
+            }));
+            return true as T;
+        case 'cmd_toggle_lock':
+            await updateWebFile(Number(args.messageId), (record) => ({
+                ...record,
+                locked: typeof args.locked === 'boolean' ? args.locked : !record.locked,
+            }));
+            return true as T;
+        case 'cmd_set_protection':
+            await setWebFileProtection(
+                Number(args.messageId),
+                String(args.pin || ''),
+                typeof args.protectionHint === 'string' ? args.protectionHint : undefined,
+                args.protected === false ? false : true
+            );
+            return true as T;
+        case 'cmd_unlock_item':
+            return await unlockWebProtectedFile(Number(args.messageId), String(args.pin || '')) as T;
         case 'cmd_move_folders':
         case 'cmd_rename_item':
-        case 'cmd_toggle_pin':
-        case 'cmd_toggle_lock':
-        case 'cmd_set_protection':
-        case 'cmd_unlock_item':
         case 'cmd_copy_item':
         case 'cmd_set_folder_color':
             return true as T;
@@ -814,6 +840,9 @@ function toTelegramFile(record: WebFileRecord): TelegramFile {
         starred: record.starred || false,
         pinned: record.pinned || false,
         color: record.color,
+        locked: record.locked || false,
+        protected: record.protected || false,
+        protectionHint: record.protectionHint,
         trashed: record.trashed || false,
         deletedAt: record.deletedAt,
         checksum: record.checksum,
@@ -939,6 +968,39 @@ async function moveWebFiles(messageIds: number[], targetFolderId: number | null)
     }
 }
 
+async function setWebFileProtection(
+    id: number,
+    pin: string,
+    protectionHint: string | undefined,
+    protectedEnabled: boolean
+): Promise<void> {
+    if (protectedEnabled && !pin.trim()) throw new Error('Protection PIN is required');
+    const protectionHash = protectedEnabled ? await sha256Text(pin) : undefined;
+    await updateWebFile(id, (record) => {
+        if (!protectedEnabled && record.protected && !unlockedWebProtectedItems.has(id)) {
+            throw new Error(`File "${record.name}" is protected. Unlock it before removing protection.`);
+        }
+        return {
+            ...record,
+            protected: protectedEnabled,
+            protectionHash,
+            protectionHint: protectedEnabled ? protectionHint?.trim() || undefined : undefined,
+        };
+    });
+    unlockedWebProtectedItems.delete(id);
+}
+
+async function unlockWebProtectedFile(id: number, pin: string): Promise<boolean> {
+    const record = await getWebFile(id);
+    if (!record) throw new Error('File not found');
+    if (!record.protected) return true;
+    if (!record.protectionHash) throw new Error('Protection PIN metadata missing');
+    const enteredHash = await sha256Text(pin);
+    if (enteredHash !== record.protectionHash) throw new Error('Invalid protection PIN');
+    unlockedWebProtectedItems.add(id);
+    return true;
+}
+
 async function deleteWebFolder(folderId: number): Promise<void> {
     const records = await getAllWebFiles();
     const recordsToDelete = records.filter((record) => record.folderId === folderId);
@@ -1011,4 +1073,8 @@ async function sha256Blob(blob: Blob): Promise<string> {
     return Array.from(new Uint8Array(digest))
         .map((byte) => byte.toString(16).padStart(2, '0'))
         .join('');
+}
+
+async function sha256Text(text: string): Promise<string> {
+    return sha256Blob(new Blob([text], { type: 'text/plain' }));
 }

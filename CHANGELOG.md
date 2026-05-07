@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.10] - 2026-05-07
+
+### Folder Root Logic & PIN Protection Fix
+
+- Fixed Upload Folder so folders uploaded from inside another folder stay inside that folder instead of appearing at Saved Messages root/sidebar.
+- Fixed sidebar Create Folder so Starred, Gallery, Recent, Quick Access, Media, and Trash do not reuse a stale folder parent.
+- Fixed Make a Copy so root items stay in root instead of copying into the last active folder.
+- Fixed PIN protection so wrong PINs no longer unlock protected files or folders, protection hashes are preserved during manifest sync, and newly protected items require the PIN before protected actions.
+- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.10.
+
 ## [1.1.9] - 2026-05-07
 
 ### Nested Folder Create Fix

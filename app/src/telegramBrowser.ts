@@ -1038,13 +1038,15 @@ export async function telegramSetItemProtection(
     const manifest = await getDriveManifest();
     const updatedAt = new Date().toISOString();
     const safeHint = protectionHint?.trim() || undefined;
+    if (protectedEnabled && !pin.trim()) throw new Error('Protection PIN is required');
+    const protectionHash = protectedEnabled ? await sha256Text(pin) : undefined;
+
     const updateFolder = async () => {
         const folder = manifest.folders.find((item) => item.id === id);
         if (!folder) throw new Error('Folder metadata not found');
         if (!protectedEnabled && isFolderProtectedAndLocked(folder)) {
             throw new Error(`Folder "${folder.name}" is protected. Unlock it before removing protection.`);
         }
-        const protectionHash = protectedEnabled ? await sha256Text(pin) : undefined;
         replaceManifestFolder(manifest.folders, {
             ...folder,
             protected: protectedEnabled,
@@ -1063,18 +1065,16 @@ export async function telegramSetItemProtection(
         manifest.files[key] = {
             ...record,
             protected: protectedEnabled,
-            protectionHash: protectedEnabled ? await sha256Text(pin) : undefined,
+            protectionHash,
             protectionHint: protectedEnabled ? safeHint : undefined,
             updatedAt,
         };
     };
 
-    if (protectedEnabled && !pin.trim()) throw new Error('Protection PIN is required');
     if (itemType === 'folder') await updateFolder();
     else await updateFile();
 
-    if (protectedEnabled) unlockedProtectedItems.add(itemProtectionKey(itemType, id));
-    else unlockedProtectedItems.delete(itemProtectionKey(itemType, id));
+    unlockedProtectedItems.delete(itemProtectionKey(itemType, id));
 
     appendManifestEvent(manifest, 'item_protected', {
         id,
@@ -1082,6 +1082,7 @@ export async function telegramSetItemProtection(
         messageId: itemType === 'file' ? id : undefined,
         itemType,
         protected: protectedEnabled,
+        protectionHash,
         protectionHint: safeHint,
     });
     await saveDriveManifest(manifest, 'debounced');
@@ -1094,10 +1095,17 @@ export async function telegramUnlockProtectedItem(
     pin: string
 ): Promise<boolean> {
     const manifest = await getDriveManifest();
+    const item = itemType === 'folder'
+        ? manifest.folders.find((folder) => folder.id === id)
+        : manifest.files[String(id)];
+    if (!item) throw new Error(itemType === 'folder' ? 'Folder metadata not found' : 'File metadata not found');
+    if (!item.protected) return true;
+
     const hash = itemType === 'folder'
-        ? folderProtectionHash(manifest.folders.find((item) => item.id === id) || { id, name: '' })
-        : manifest.files[String(id)]?.protectionHash;
-    if (!hash) return true;
+        ? folderProtectionHash(item as TelegramFolder)
+        : (item as DriveFileRecord).protectionHash;
+    if (!hash) throw new Error('Protection PIN metadata missing');
+
     const enteredHash = await sha256Text(pin);
     if (enteredHash !== hash) throw new Error('Invalid protection PIN');
     unlockedProtectedItems.add(itemProtectionKey(itemType, id));
@@ -2380,6 +2388,7 @@ function applyFileLifecycleEvents(
             normalized[key] = {
                 ...record,
                 protected: Boolean(event.payload?.protected),
+                protectionHash: typeof event.payload?.protectionHash === 'string' ? event.payload.protectionHash : undefined,
                 protectionHint: typeof event.payload?.protectionHint === 'string' ? event.payload.protectionHint : record.protectionHint,
                 updatedAt: laterTimestamp(record.updatedAt, event.at),
             };
@@ -2467,6 +2476,7 @@ function applyFolderLifecycleEvents(
                 replaceManifestFolder(normalized, {
                     ...folder,
                     protected: Boolean(event.payload?.protected),
+                    protectionHash: typeof event.payload?.protectionHash === 'string' ? event.payload.protectionHash : undefined,
                     protectionHint: typeof event.payload?.protectionHint === 'string' ? event.payload.protectionHint : folder.protectionHint,
                     updatedAt: laterTimestamp(folder.updatedAt, event.at),
                 });
@@ -3018,11 +3028,11 @@ function folderProtectionHash(folder: TelegramFolder): string | undefined {
 }
 
 function isFolderProtectedAndLocked(folder: TelegramFolder): boolean {
-    return Boolean(folder.protected && folderProtectionHash(folder) && !isProtectedItemUnlocked('folder', folder.id));
+    return Boolean(folder.protected && !isProtectedItemUnlocked('folder', folder.id));
 }
 
 function isFileProtectedAndLocked(record: DriveFileRecord): boolean {
-    return Boolean(record.protected && record.protectionHash && !isProtectedItemUnlocked('file', record.messageId));
+    return Boolean(record.protected && !isProtectedItemUnlocked('file', record.messageId));
 }
 
 function getManifestFolderAncestryIds(folderId: number | null, folders: TelegramFolder[]): number[] {
@@ -3391,7 +3401,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.1.9-web',
+        appVersion: '1.1.10-web',
     });
 
     await client.connect();
