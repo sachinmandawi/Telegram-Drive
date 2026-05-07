@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.4] - 2026-05-07
+
+### Folder Trash Sync Fix
+
+- Fixed folder delete in Saved Messages mode so deleting a folder moves its files into Trash instead of moving them back to the root view.
+- Added folder lifecycle tombstones and `folder_deleted` manifest replay so deleted folders stay hidden after Sync/Repair and app restart.
+- Sync now trusts the refreshed Saved Messages manifest folder list instead of merging stale locally cached folders back into the sidebar.
+- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.4.
+
 ## [1.1.3] - 2026-05-07
 
 ### Trash Sync Fix

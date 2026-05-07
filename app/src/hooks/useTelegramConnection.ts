@@ -59,7 +59,7 @@ export function useTelegramConnection(onLogoutParent: () => void) {
                         setIsConnected(true);
                         if (savedMessagesDefault) {
                             const syncedFolders = await invokeCommand<TelegramFolder[]>('cmd_scan_folders');
-                            const merged = mergeFolders([...(savedFolders || []), ...syncedFolders]);
+                            const merged = mergeFolders(syncedFolders);
                             foldersRef.current = merged;
                             setFolders(merged);
                             await _store.set('folders', merged);
@@ -198,8 +198,8 @@ export function useTelegramConnection(onLogoutParent: () => void) {
     const handleFolderDelete = async (folderId: number, folderName: string) => {
         const folderIdsToDelete = collectFolderTreeIds(folderId, foldersRef.current);
         const nestedCount = folderIdsToDelete.size - 1;
-        const deleteMessage = savedMessagesDefault && !isDesktopRuntime
-            ? `Are you sure you want to remove "${folderName}"${nestedCount > 0 ? ` and ${nestedCount} nested folder(s)` : ''}?\nFiles stay in Telegram Saved Messages and move back to the root view.`
+        const deleteMessage = savedMessagesDefault
+            ? `Move "${folderName}"${nestedCount > 0 ? ` and ${nestedCount} nested folder(s)` : ''} to Trash?\nFiles inside this folder will move to Telegram Drive Trash and stay hidden after Sync.`
             : `Are you sure you want to delete "${folderName}"?\nThis will delete the channel on Telegram.`;
 
         if (!await confirm({
@@ -212,6 +212,9 @@ export function useTelegramConnection(onLogoutParent: () => void) {
         try {
             for (const id of folderIdsToDelete) {
                 await invokeCommand('cmd_delete_folder', { folderId: id });
+            }
+            if (savedMessagesDefault) {
+                await invokeCommand('cmd_flush_manifest').catch(() => undefined);
             }
             const updated = foldersRef.current.filter(f => !folderIdsToDelete.has(f.id));
             foldersRef.current = updated;
