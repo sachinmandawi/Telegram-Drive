@@ -2644,7 +2644,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.1.6-web',
+        appVersion: '1.1.7-web',
     });
 
     await client.connect();
@@ -3342,6 +3342,11 @@ async function sendTelegramFileWithRetry(
     entity: string,
     options: SendFileOptions
 ): Promise<TelegramMessage> {
+    const browserFile = getSingleBrowserFile(options.file);
+    if (browserFile) {
+        return await sendBrowserFileWithRetry(client, entity, browserFile, options);
+    }
+
     let lastError: unknown;
 
     for (let attempt = 0; attempt < TELEGRAM_UPLOAD_MAX_ATTEMPTS; attempt++) {
@@ -3360,6 +3365,59 @@ async function sendTelegramFileWithRetry(
     }
 
     throw new Error(formatTelegramUploadError(lastError));
+}
+
+async function sendBrowserFileWithRetry(
+    client: TelegramClientInstance,
+    entity: string,
+    file: File,
+    options: SendFileOptions
+): Promise<TelegramMessage> {
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < TELEGRAM_UPLOAD_MAX_ATTEMPTS; attempt++) {
+        try {
+            await waitForTelegramUploadSlot();
+            const fileHandle = await client.uploadFile({
+                file,
+                workers: options.workers || 1,
+                onProgress: options.progressCallback,
+            });
+            const message = await client.sendFile(entity, {
+                ...options,
+                file: fileHandle,
+                attributes: await appendFilenameAttribute(options.attributes, file.name),
+                progressCallback: undefined,
+            });
+            nextTelegramUploadAt = Date.now() + TELEGRAM_UPLOAD_MIN_INTERVAL_MS;
+            return message as TelegramMessage;
+        } catch (err) {
+            lastError = err;
+            if (attempt >= TELEGRAM_UPLOAD_MAX_ATTEMPTS - 1 || !isRetryableTelegramError(err)) {
+                break;
+            }
+            await sleep(getTelegramRetryDelayMs(err, attempt));
+        }
+    }
+
+    throw new Error(formatTelegramUploadError(lastError));
+}
+
+function getSingleBrowserFile(file: SendFileOptions['file']): File | null {
+    if (typeof File === 'undefined' || Array.isArray(file)) return null;
+    return file instanceof File ? file : null;
+}
+
+async function appendFilenameAttribute(
+    attributes: SendFileOptions['attributes'],
+    fileName: string
+): Promise<SendFileOptions['attributes']> {
+    const { Api } = await import('telegram/tl');
+    const filenameAttribute = new Api.DocumentAttributeFilename({
+        fileName: fileName.split(/[\\/]/).pop() || fileName || 'unnamed',
+    });
+    if (!attributes) return [filenameAttribute] as SendFileOptions['attributes'];
+    return [...attributes, filenameAttribute] as SendFileOptions['attributes'];
 }
 
 async function waitForTelegramUploadSlot(): Promise<void> {

@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.7] - 2026-05-07
+
+### Browser Upload Hotfix
+
+- Fixed GitHub Pages/Saved Messages upload failing with `Cannot use [object File] as file`.
+- Browser files are now uploaded through Telegram's upload handle flow before sending, with the original filename preserved.
+- Fixed the same browser File path for remote manifest saves so uploads and sync metadata can persist reliably.
+- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.7.
+
 ## [1.1.6] - 2026-05-07
 
 ### Google Drive Logic Pack
