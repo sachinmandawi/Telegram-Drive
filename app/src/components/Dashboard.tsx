@@ -189,12 +189,16 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             });
             return true;
         } catch (e) {
+            if (String(e).includes('Protection PIN metadata missing') && action.startsWith('remove protection')) {
+                toast.info('PIN metadata is missing. Removing protection so the item can be recovered.');
+                return true;
+            }
             toast.error(`Unlock failed: ${e}`);
             return false;
         }
     }, [unlockedProtectedIds]);
 
-    async function restoreItems(items: TelegramFile[]) {
+    const restoreItems = useCallback(async (items: TelegramFile[]) => {
         let restored = 0;
         let failed = 0;
         for (const item of items) {
@@ -209,7 +213,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         await handleSyncFolders();
         if (restored > 0) toast.success(`Restored ${restored} item(s).`);
         if (failed > 0) toast.error(`Failed to restore ${failed} item(s).`);
-    }
+    }, [handleSyncFolders, queryClient]);
 
     const handleSelectedDelete = useCallback(async () => {
         if (selectedIds.length === 0) return;
@@ -298,7 +302,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 });
             }
             if (fail > 0) toast.error(`Failed to move ${fail} item(s).`);
-    }, [activeFolderId, confirm, displayedFiles, driveView, ensureProtectedAccess, handleBulkDelete, handleSyncFolders, queryClient, savedMessagesDefault, selectedIds]);
+    }, [activeFolderId, confirm, displayedFiles, driveView, ensureProtectedAccess, handleBulkDelete, handleSyncFolders, queryClient, restoreItems, savedMessagesDefault, selectedIds]);
 
     const handleMoveSelection = useCallback(async (targetFolderId: number | null) => {
         const selectedItems = displayedFiles.filter((item) => selectedIds.includes(item.id));
@@ -569,28 +573,35 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
         const dataTransferFileId = e.dataTransfer.getData("application/x-telegram-file-id");
 
-        if (activeFolderId === targetFolderId) return;
-
         const fileId = internalDragRef.current || (dataTransferFileId ? parseInt(dataTransferFileId) : null);
 
         if (fileId) {
             try {
-                const draggedItem = displayedFiles.find((item) => item.id === fileId);
                 const idsToMove = selectedIds.includes(fileId) ? selectedIds : [fileId];
-                const selectedItems = displayedFiles.filter((item) => idsToMove.includes(item.id));
+                const selectedItems = displayedFiles
+                    .filter((item) => idsToMove.includes(item.id))
+                    .filter((item) => (item.folderId ?? null) !== targetFolderId);
+                if (selectedItems.length === 0) {
+                    setInternalDragFileId(null);
+                    return;
+                }
                 for (const item of selectedItems) {
                     if (!await ensureProtectedAccess(item, 'move')) return;
                 }
                 const folderIds = selectedItems.filter((item) => item.type === 'folder').map((item) => item.id);
-                const messageIds = selectedItems.filter((item) => item.type !== 'folder').map((item) => item.id);
+                const filesBySourceFolder = new Map<number | null, number[]>();
+                for (const item of selectedItems.filter((item) => item.type !== 'folder')) {
+                    const sourceFolderId = item.folderId ?? null;
+                    filesBySourceFolder.set(sourceFolderId, [...(filesBySourceFolder.get(sourceFolderId) || []), item.id]);
+                }
 
-                if (draggedItem?.type === 'folder' || folderIds.length > 0) {
+                if (folderIds.length > 0) {
                     await invokeCommand('cmd_move_folders', { folderIds, targetParentId: targetFolderId, conflictStrategy: 'keep_both' });
                 }
-                if (messageIds.length > 0) {
+                for (const [sourceFolderId, messageIds] of filesBySourceFolder) {
                     await invokeCommand('cmd_move_files', {
                         messageIds,
-                        sourceFolderId: activeFolderId,
+                        sourceFolderId,
                         targetFolderId: targetFolderId,
                         conflictStrategy: 'keep_both'
                     });
@@ -602,7 +613,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
                 if (selectedIds.includes(fileId)) setSelectedIds([]);
 
-                toast.success(`Moved ${idsToMove.length} item(s).`);
+                toast.success(`Moved ${selectedItems.length} item(s).`);
 
                 setInternalDragFileId(null);
             } catch {
@@ -1053,14 +1064,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         } catch (e) {
             toast.error(`Restore failed: ${e}`);
         }
-    }, []);
+    }, [restoreItems]);
 
     const handleSelectedRestore = useCallback(async () => {
         const selectedItems = displayedFiles.filter((item) => selectedIds.includes(item.id));
         if (selectedItems.length === 0) return;
         await restoreItems(selectedItems);
         setSelectedIds([]);
-    }, [displayedFiles, selectedIds]);
+    }, [displayedFiles, restoreItems, selectedIds]);
 
     return (
         <div

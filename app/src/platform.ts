@@ -249,13 +249,14 @@ async function invokeTauriCommand<T>(invoke: TauriInvokeFn, command: string, arg
         }
         case 'cmd_set_trash_retention':
         case 'cmd_flush_manifest':
-        case 'cmd_move_folders':
-        case 'cmd_rename_item':
         case 'cmd_toggle_pin':
         case 'cmd_toggle_lock':
+            return true as T;
+        case 'cmd_move_folders':
+        case 'cmd_rename_item':
         case 'cmd_copy_item':
         case 'cmd_set_folder_color':
-            return true as T;
+            throw new Error(`${command} requires Saved Messages storage`);
         case 'cmd_set_protection':
         case 'cmd_unlock_item':
             throw new Error('PIN protection requires Saved Messages storage');
@@ -582,7 +583,7 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
         case 'cmd_rename_item':
         case 'cmd_copy_item':
         case 'cmd_set_folder_color':
-            return true as T;
+            throw new Error(`${command} requires Saved Messages storage`);
         case 'cmd_search_global':
             return await searchWebFiles(String(args.query || '')) as T;
         case 'cmd_get_trash_files':

@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.11] - 2026-05-08
+
+### Deep Bug Fix Pack
+
+- Preserved existing PIN protection hashes when replaying older protection events, with a recovery path for removing protection if hash metadata is missing.
+- Fixed drag/drop moves from Starred, Recent, Quick Access, and other non-folder views so stale active folder state cannot cancel valid moves.
+- Fixed folder trash logic to also trash files that only exist in the folder map and have not been fully indexed yet.
+- Hid active files from search, Recent, Quick Access, and folder listings when their parent folder is trashed.
+- Replaced false-success fallback command responses with explicit unsupported errors for folder move, rename, copy, and color operations outside Saved Messages storage.
+- Fixed restore callbacks so Trash restore refreshes with the current sync handler instead of stale initial state.
+- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.11.
+
 ## [1.1.10] - 2026-05-07
 
 ### Folder Root Logic & PIN Protection Fix

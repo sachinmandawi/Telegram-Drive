@@ -428,7 +428,7 @@ export async function telegramGetFiles(folderId: number | null | undefined = nul
             record.updatedAt = new Date().toISOString();
             indexed++;
         }
-        if (record.trashed) continue;
+        if (record.trashed || isFileInsideTrashedFolder(record, manifest)) continue;
         if (folderId !== undefined && (record.folderId ?? null) !== folderId) continue;
         files.push(toTelegramFile(message, manifest));
     }
@@ -462,11 +462,17 @@ export async function telegramSearchFiles(query: string): Promise<TelegramFile[]
     }
 
     const filters = parseSmartSearchQuery(query);
+    const filtersWithoutTrash = { ...filters, trashed: undefined };
     return Object.values(manifest.files)
         .filter((record) => {
-            if (filters.trashed === undefined && record.trashed) return false;
-            if (record.missing && !record.trashed) return false;
-            return matchesSmartSearch(record, filters);
+            const effectivelyTrashed = Boolean(record.trashed) || isFileInsideTrashedFolder(record, manifest);
+            if (filters.trashed === undefined) {
+                if (effectivelyTrashed) return false;
+            } else if (effectivelyTrashed !== filters.trashed) {
+                return false;
+            }
+            if (record.missing && !effectivelyTrashed) return false;
+            return matchesSmartSearch(record, filtersWithoutTrash);
         })
         .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
         .map((record) => {
@@ -525,7 +531,7 @@ export async function telegramGetRecentItems(query?: string): Promise<TelegramFi
         .filter((folder) => !isFolderOrAncestorTrashed(folder, manifest.folders))
         .map((folder) => folderToExplorerFile(folder, manifest));
     const files = Object.values(manifest.files)
-        .filter((record) => !record.trashed && !record.missing)
+        .filter((record) => !record.trashed && !record.missing && !isFileInsideTrashedFolder(record, manifest))
         .map(recordToTelegramFile);
 
     return [...folders, ...files]
@@ -541,7 +547,7 @@ export async function telegramGetQuickAccessItems(query?: string): Promise<Teleg
         .filter((folder) => folder.pinned && !isFolderOrAncestorTrashed(folder, manifest.folders))
         .map((folder) => folderToExplorerFile(folder, manifest));
     const files = Object.values(manifest.files)
-        .filter((record) => record.pinned && !record.trashed && !record.missing)
+        .filter((record) => record.pinned && !record.trashed && !record.missing && !isFileInsideTrashedFolder(record, manifest))
         .map(recordToTelegramFile);
 
     return [...folders, ...files]
@@ -1044,7 +1050,7 @@ export async function telegramSetItemProtection(
     const updateFolder = async () => {
         const folder = manifest.folders.find((item) => item.id === id);
         if (!folder) throw new Error('Folder metadata not found');
-        if (!protectedEnabled && isFolderProtectedAndLocked(folder)) {
+        if (!protectedEnabled && folderProtectionHash(folder) && isFolderProtectedAndLocked(folder)) {
             throw new Error(`Folder "${folder.name}" is protected. Unlock it before removing protection.`);
         }
         replaceManifestFolder(manifest.folders, {
@@ -1059,7 +1065,7 @@ export async function telegramSetItemProtection(
         const key = String(id);
         const record = manifest.files[key];
         if (!record) throw new Error('File metadata not found');
-        if (!protectedEnabled && isFileProtectedAndLocked(record)) {
+        if (!protectedEnabled && record.protectionHash && isFileProtectedAndLocked(record)) {
             throw new Error(`File "${record.name}" is protected. Unlock it before removing protection.`);
         }
         manifest.files[key] = {
@@ -1551,6 +1557,7 @@ async function telegramGetFilesByRecord(
 
     return Object.values(manifest.files)
         .filter(predicate)
+        .filter((record) => !isFileInsideTrashedFolder(record, manifest))
         .filter((record) => !query || matchesSmartSearch(record, filters))
         .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
         .map(recordToTelegramFile);
@@ -2385,11 +2392,16 @@ function applyFileLifecycleEvents(
                 updatedAt: laterTimestamp(record.updatedAt, event.at),
             };
         } else if (event.type === 'item_protected') {
+            const nextProtected = Boolean(event.payload?.protected);
             normalized[key] = {
                 ...record,
-                protected: Boolean(event.payload?.protected),
-                protectionHash: typeof event.payload?.protectionHash === 'string' ? event.payload.protectionHash : undefined,
-                protectionHint: typeof event.payload?.protectionHint === 'string' ? event.payload.protectionHint : record.protectionHint,
+                protected: nextProtected,
+                protectionHash: nextProtected
+                    ? (typeof event.payload?.protectionHash === 'string' ? event.payload.protectionHash : record.protectionHash)
+                    : undefined,
+                protectionHint: nextProtected
+                    ? (typeof event.payload?.protectionHint === 'string' ? event.payload.protectionHint : record.protectionHint)
+                    : undefined,
                 updatedAt: laterTimestamp(record.updatedAt, event.at),
             };
         }
@@ -2473,11 +2485,16 @@ function applyFolderLifecycleEvents(
         if (event.type === 'item_protected' && event.payload?.itemType === 'folder') {
             const folder = normalized.find((item) => item.id === Number(event.payload?.id));
             if (folder) {
+                const nextProtected = Boolean(event.payload?.protected);
                 replaceManifestFolder(normalized, {
                     ...folder,
-                    protected: Boolean(event.payload?.protected),
-                    protectionHash: typeof event.payload?.protectionHash === 'string' ? event.payload.protectionHash : undefined,
-                    protectionHint: typeof event.payload?.protectionHint === 'string' ? event.payload.protectionHint : folder.protectionHint,
+                    protected: nextProtected,
+                    protectionHash: nextProtected
+                        ? (typeof event.payload?.protectionHash === 'string' ? event.payload.protectionHash : folder.protectionHash)
+                        : undefined,
+                    protectionHint: nextProtected
+                        ? (typeof event.payload?.protectionHint === 'string' ? event.payload.protectionHint : folder.protectionHint)
+                        : undefined,
                     updatedAt: laterTimestamp(folder.updatedAt, event.at),
                 });
             }
@@ -2542,6 +2559,7 @@ function applyTrashedFolderLifecycle(
         folder.updatedAt = laterTimestamp(folder.updatedAt, deletedAt);
     }
 
+    const trashedMessageIds = new Set<string>();
     for (const [messageId, record] of Object.entries(files)) {
         const recordFolderId = record.folderId ?? fileFolders[messageId] ?? null;
         if (recordFolderId === null || !folderIds.has(recordFolderId)) continue;
@@ -2553,6 +2571,25 @@ function applyTrashedFolderLifecycle(
             deletedAt: record.deletedAt || deletedAt,
             updatedAt: laterTimestamp(record.updatedAt, deletedAt),
         };
+        fileFolders[messageId] = recordFolderId;
+        trashedMessageIds.add(messageId);
+    }
+
+    for (const [messageId, recordFolderId] of Object.entries(fileFolders)) {
+        if (trashedMessageIds.has(messageId)) continue;
+        if (recordFolderId === null || !folderIds.has(recordFolderId)) continue;
+        const messageIdNumber = Number(messageId);
+        if (!Number.isFinite(messageIdNumber)) continue;
+        files[messageId] = normalizeLifecycleRecord(messageIdNumber, {
+            messageId: messageIdNumber,
+            folderId: recordFolderId,
+            name: `Telegram-file-${messageId}`,
+            size: 0,
+            trashed: true,
+            deletedAt,
+            missing: false,
+            updatedAt: deletedAt,
+        });
         fileFolders[messageId] = recordFolderId;
     }
 }
@@ -3144,6 +3181,7 @@ function trashFolderTreeInManifest(
         trashedFolders++;
     }
 
+    const trashedMessageIds = new Set<string>();
     for (const [messageId, existing] of Object.entries(manifest.files)) {
         const recordFolderId = existing.folderId ?? manifest.fileFolders[messageId] ?? null;
         if (recordFolderId !== null && folderIds.has(recordFolderId)) {
@@ -3151,8 +3189,21 @@ function trashFolderTreeInManifest(
             record.folderId = recordFolderId;
             manifest.fileFolders[messageId] = recordFolderId;
             rememberLocalFileLifecycle(record, 'trashed');
+            trashedMessageIds.add(messageId);
             trashedFiles++;
         }
+    }
+
+    for (const [messageId, recordFolderId] of Object.entries(manifest.fileFolders)) {
+        if (trashedMessageIds.has(messageId)) continue;
+        if (recordFolderId === null || !folderIds.has(recordFolderId)) continue;
+        const messageIdNumber = Number(messageId);
+        if (!Number.isFinite(messageIdNumber)) continue;
+        const record = moveFileRecordToTrash(manifest, messageIdNumber, deletedAt);
+        record.folderId = recordFolderId;
+        manifest.fileFolders[messageId] = recordFolderId;
+        rememberLocalFileLifecycle(record, 'trashed');
+        trashedFiles++;
     }
 
     return {
@@ -3401,7 +3452,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.1.10-web',
+        appVersion: '1.1.11-web',
     });
 
     await client.connect();
