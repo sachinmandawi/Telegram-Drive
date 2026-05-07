@@ -93,7 +93,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             const args = driveView === 'files' ? { folderId: activeFolderId } : {};
             return invokeCommand<any[]>(command, args).then(res => res.map(f => ({
             ...f,
-            sizeStr: formatBytes(f.size),
+            sizeStr: f.sizeStr || formatBytes(f.size),
             type: f.icon_type || (f.name.endsWith('/') ? 'folder' : 'file')
             }))).then((files) => {
                 if (driveView === 'gallery') return files.filter(isImageFile);
@@ -127,6 +127,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const displayedFileItems = useMemo(() => {
         return displayedFiles.filter((f) => f.type !== 'folder');
     }, [displayedFiles]);
+    const selectableIds = useMemo(() => displayedFiles.map((file) => file.id), [displayedFiles]);
+    const allDisplayedSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.includes(id));
+    const selectedFileCount = useMemo(() => {
+        return displayedFileItems.filter((file) => selectedIds.includes(file.id)).length;
+    }, [displayedFileItems, selectedIds]);
+    const selectionHasFolder = useMemo(() => {
+        return displayedFiles.some((file) => file.type === 'folder' && selectedIds.includes(file.id));
+    }, [displayedFiles, selectedIds]);
 
     const { data: bandwidth } = useQuery({
         queryKey: ['bandwidth'],
@@ -146,16 +154,96 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const { downloadQueue, queueDownload, clearFinished: clearDownloads, cancelAll: cancelDownloads, retryFailed: retryFailedDownloads } = useFileDownload(store);
     const watchFolder = useWatchFolderSync(activeFolderId, store, queueFileEntries);
 
+    const handleClearSelection = useCallback(() => {
+        setSelectedIds([]);
+    }, []);
 
     const handleSelectAll = useCallback(() => {
-        setSelectedIds(displayedFiles.filter(f => f.type !== 'folder').map(f => f.id));
-    }, [displayedFiles]);
+        setSelectedIds(selectableIds);
+    }, [selectableIds]);
+
+    const handleSelectedDelete = useCallback(async () => {
+        if (selectedIds.length === 0) return;
+
+        const selectedItems = displayedFiles.filter((item) => selectedIds.includes(item.id));
+        if (selectedItems.length === 0) return;
+
+        if (driveView === 'trash') {
+            const ok = await confirm({
+                title: "Delete Forever",
+                message: `Permanently delete ${selectedItems.length} item(s)? Folder contents will also be deleted forever.`,
+                confirmText: "Delete Forever",
+                variant: 'danger'
+            });
+            if (!ok) return;
+
+            let success = 0;
+            let fail = 0;
+            for (const item of selectedItems) {
+                try {
+                    await invokeCommand('cmd_permanent_delete_file', { messageId: item.id, itemType: item.type || 'file' });
+                    success++;
+                } catch {
+                    fail++;
+                }
+            }
+            setSelectedIds([]);
+            queryClient.invalidateQueries({ queryKey: ['files'] });
+            await handleSyncFolders();
+            if (success > 0) toast.success(`Permanently deleted ${success} item(s).`);
+            if (fail > 0) toast.error(`Failed to delete ${fail} item(s).`);
+            return;
+        }
+
+        const foldersToDelete = selectedItems.filter((item) => item.type === 'folder');
+        if (foldersToDelete.length === 0) {
+            handleBulkDelete();
+            return;
+        }
+
+        const filesToDelete = selectedItems.filter((item) => item.type !== 'folder');
+        const ok = await confirm({
+            title: "Move to Trash",
+            message: `Move ${selectedItems.length} item(s) to Trash? Selected folders will stay restorable with their contents.`,
+            confirmText: "Move to Trash",
+            variant: 'danger'
+        });
+        if (!ok) return;
+
+        let success = 0;
+        let fail = 0;
+        for (const folder of foldersToDelete) {
+            try {
+                await invokeCommand('cmd_delete_folder', { folderId: folder.id });
+                success++;
+            } catch {
+                fail++;
+            }
+        }
+        for (const file of filesToDelete) {
+            try {
+                await invokeCommand('cmd_delete_file', { messageId: file.id, folderId: activeFolderId });
+                success++;
+            } catch {
+                fail++;
+            }
+        }
+
+        if (savedMessagesDefault && success > 0) {
+            await invokeCommand('cmd_flush_manifest').catch(() => undefined);
+        }
+        setSelectedIds([]);
+        queryClient.invalidateQueries({ queryKey: ['files'] });
+        await handleSyncFolders();
+        if (success > 0) toast.success(`Moved ${success} item(s) to Trash.`);
+        if (fail > 0) toast.error(`Failed to move ${fail} item(s).`);
+    }, [activeFolderId, confirm, displayedFiles, driveView, handleBulkDelete, handleSyncFolders, queryClient, savedMessagesDefault, selectedIds]);
 
     const handleKeyboardDelete = useCallback(() => {
         if (selectedIds.length > 0) {
-            handleBulkDelete();
+            void handleSelectedDelete();
         }
-    }, [selectedIds, handleBulkDelete]);
+    }, [selectedIds, handleSelectedDelete]);
 
     const handleEscape = useCallback(() => {
         setSelectedIds([]);
@@ -178,13 +266,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             const selected = displayedFiles.find(f => f.id === selectedIds[0]);
             if (selected) {
                 if (selected.type === 'folder') {
+                    if (driveView === 'trash' || selected.trashed) return;
                     setActiveFolderId(selected.id);
                 } else {
                     handlePreview(selected, displayedFiles);
                 }
             }
         }
-    }, [selectedIds, displayedFiles, setActiveFolderId]);
+    }, [driveView, selectedIds, displayedFiles, setActiveFolderId]);
 
     useKeyboardShortcuts({
         onSelectAll: handleSelectAll,
@@ -241,25 +330,31 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const handleFileClick = (e: React.MouseEvent, id: number) => {
         e.stopPropagation();
         const clicked = displayedFiles.find(f => f.id === id);
-        if (clicked?.type === 'folder') {
-            setActiveFolderId(id);
-            return;
-        }
         if (e.metaKey || e.ctrlKey) {
             setSelectedIds(ids => ids.includes(id) ? ids.filter(i => i !== id) : [...ids, id]);
+            return;
+        }
+        if (clicked?.type === 'folder') {
+            if (driveView === 'trash' || clicked.trashed) {
+                setSelectedIds([id]);
+                return;
+            }
+            setActiveFolderId(id);
         } else {
             setSelectedIds([id]);
         }
     }
 
     const handleToggleSelection = useCallback((id: number) => {
-        const item = displayedFiles.find(f => f.id === id);
-        if (item?.type === 'folder') return;
         setSelectedIds(ids => ids.includes(id) ? ids.filter(i => i !== id) : [...ids, id]);
-    }, [displayedFiles]);
+    }, []);
 
     const handlePreview = (file: TelegramFile, orderedFiles?: TelegramFile[]) => {
         if (file.type === 'folder') {
+            if (driveView === 'trash' || file.trashed) {
+                setSelectedIds([file.id]);
+                return;
+            }
             setActiveFolderId(file.id);
             return;
         }
@@ -479,26 +574,31 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             });
             if (!ok) return;
             try {
-                await invokeCommand('cmd_permanent_delete_file', { messageId: id });
+                await invokeCommand('cmd_permanent_delete_file', { messageId: id, itemType: file.type || 'file' });
                 queryClient.invalidateQueries({ queryKey: ['files'] });
-                toast.success("File permanently deleted");
+                await handleSyncFolders();
+                toast.success(file.type === 'folder' ? "Folder permanently deleted" : "File permanently deleted");
             } catch (e) {
                 toast.error(`Permanent delete failed: ${e}`);
             }
             return;
         }
         handleDelete(id);
-    }, [confirm, displayedFiles, driveView, folders, handleDelete, handleFolderDelete, queryClient]);
+    }, [confirm, displayedFiles, driveView, folders, handleDelete, handleFolderDelete, handleSyncFolders, queryClient]);
 
     const handleExplorerDownload = useCallback((id: number, name: string) => {
         const item = displayedFiles.find(f => f.id === id);
         if (item?.type === 'folder') {
+            if (driveView === 'trash' || item.trashed) {
+                toast.info("Restore the folder before downloading its contents.");
+                return;
+            }
             setActiveFolderId(id);
             toast.info("Opened folder. Use Download All Files for its contents.");
             return;
         }
         queueDownload(id, name, activeFolderId);
-    }, [activeFolderId, displayedFiles, queueDownload, setActiveFolderId]);
+    }, [activeFolderId, displayedFiles, driveView, queueDownload, setActiveFolderId]);
 
     const handleRepairDrive = useCallback(async () => {
         if (!savedMessagesDefault) {
@@ -550,6 +650,30 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         }
     }, [displayedFileItems, queryClient, selectedIds]);
 
+    const handleSelectedBulkDownload = useCallback(() => {
+        if (selectedFileCount === 0) {
+            toast.info("Select at least one file to download.");
+            return;
+        }
+        void handleBulkDownload();
+    }, [handleBulkDownload, selectedFileCount]);
+
+    const handleSelectedBulkTag = useCallback(() => {
+        if (selectedFileCount === 0) {
+            toast.info("Select at least one file to tag.");
+            return;
+        }
+        setTagTarget('bulk');
+    }, [selectedFileCount]);
+
+    const handleSelectedBulkStar = useCallback(() => {
+        if (selectedFileCount === 0) {
+            toast.info("Select at least one file to star.");
+            return;
+        }
+        void handleBulkStar();
+    }, [handleBulkStar, selectedFileCount]);
+
     const handleSaveTags = useCallback(async (tags: string[]) => {
         const target = tagTarget;
         if (!target) return;
@@ -595,48 +719,16 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         onLogout();
     }, [onLogout, store]);
 
-    const handleVisibleBulkDelete = useCallback(async () => {
-        if (driveView !== 'trash') {
-            handleBulkDelete();
-            return;
-        }
-        if (selectedIds.length === 0) return;
-
-        const ok = await confirm({
-            title: "Delete Forever",
-            message: `Permanently delete ${selectedIds.length} file(s)?`,
-            confirmText: "Delete Forever",
-            variant: 'danger'
-        });
-        if (!ok) return;
-
-        let success = 0;
-        let fail = 0;
-        for (const id of selectedIds) {
-            try {
-                await invokeCommand('cmd_permanent_delete_file', { messageId: id });
-                success++;
-            } catch {
-                fail++;
-            }
-        }
-        setSelectedIds([]);
-        queryClient.invalidateQueries({ queryKey: ['files'] });
-        if (success > 0) toast.success(`Permanently deleted ${success} file(s).`);
-        if (fail > 0) toast.error(`Failed to delete ${fail} file(s).`);
-    }, [confirm, driveView, handleBulkDelete, queryClient, selectedIds]);
-
     const handleRestoreFile = useCallback(async (file: TelegramFile) => {
-        if (file.type === 'folder') return;
-
         try {
-            await invokeCommand('cmd_restore_file', { messageId: file.id });
+            await invokeCommand('cmd_restore_file', { messageId: file.id, itemType: file.type || 'file' });
             queryClient.invalidateQueries({ queryKey: ['files'] });
+            await handleSyncFolders();
             toast.success(`Restored "${file.name}"`);
         } catch (e) {
             toast.error(`Restore failed: ${e}`);
         }
-    }, [queryClient, savedMessagesDefault]);
+    }, [handleSyncFolders, queryClient]);
 
     return (
         <div
@@ -699,7 +791,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 {tagTarget && (
                     <TagEditorModal
                         key="tag-editor"
-                        title={tagTarget === 'bulk' ? `Tag ${selectedIds.length} Selected File(s)` : `Tags for ${tagTarget.name}`}
+                        title={tagTarget === 'bulk' ? `Tag ${selectedFileCount} Selected File(s)` : `Tags for ${tagTarget.name}`}
                         initialTags={tagTarget === 'bulk' ? [] : tagTarget.tags || []}
                         onSave={handleSaveTags}
                         onClose={() => setTagTarget(null)}
@@ -728,17 +820,21 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 <TopBar
                     currentFolderName={currentFolderName}
                     selectedIds={selectedIds}
+                    onSelectAll={handleSelectAll}
+                    onClearSelection={handleClearSelection}
+                    allSelected={allDisplayedSelected}
+                    selectableCount={selectableIds.length}
                     onShowMoveModal={() => setShowMoveModal(true)}
-                    onBulkDownload={handleBulkDownload}
-                    onBulkDelete={handleVisibleBulkDelete}
+                    onBulkDownload={handleSelectedBulkDownload}
+                    onBulkDelete={handleSelectedDelete}
                     onDownloadFolder={handleDownloadFolder}
                     viewMode={viewMode}
                     setViewMode={setViewMode}
                     searchTerm={searchTerm}
                     onSearchChange={setSearchTerm}
-                    savedMessagesOnly={driveView !== 'files'}
-                    onBulkTag={() => setTagTarget('bulk')}
-                    onBulkStar={handleBulkStar}
+                    savedMessagesOnly={driveView !== 'files' || selectionHasFolder}
+                    onBulkTag={handleSelectedBulkTag}
+                    onBulkStar={handleSelectedBulkStar}
                     onOpenTools={() => setShowTools(true)}
                     onRepairDrive={savedMessagesDefault ? handleRepairDrive : undefined}
                     isRepairing={isRepairingDrive}
@@ -846,8 +942,11 @@ function folderToExplorerItem(folder: TelegramFolder): TelegramFile {
         name: folder.name,
         size: 0,
         sizeStr: 'Folder',
-        created_at: '',
+        created_at: folder.deletedAt ? new Date(folder.deletedAt).toLocaleString() : '',
         type: 'folder',
+        folderId: folder.parent_id ?? null,
+        trashed: folder.trashed || false,
+        deletedAt: folder.deletedAt,
     };
 }
 

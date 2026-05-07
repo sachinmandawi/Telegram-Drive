@@ -11,6 +11,7 @@ export interface TelegramFile {
     tags?: string[];
     starred?: boolean;
     trashed?: boolean;
+    deletedAt?: string;
     missing?: boolean;
     checksum?: string;
     originalPath?: string;
@@ -29,6 +30,9 @@ export interface TelegramFolder {
     id: number;
     name: string;
     parent_id?: number;
+    trashed?: boolean;
+    deletedAt?: string;
+    updatedAt?: string;
 }
 
 export interface QueueItem {

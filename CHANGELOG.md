@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.5] - 2026-05-07
+
+### Google Drive-Style Folder Trash
+
+- Reworked Saved Messages folder delete so folders move to Trash as restorable folder items with their nested folders and files kept together.
+- Restoring a trashed folder now restores the whole folder tree and its files to the original structure.
+- Delete Forever and Trash Cleanup now permanently remove trashed folder trees and their Telegram messages together.
+- Added a visible Select All / Clear selection action when items are selected, and folder cards can now be selected directly.
+- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.5.
+
 ## [1.1.4] - 2026-05-07
 
 ### Folder Trash Sync Fix

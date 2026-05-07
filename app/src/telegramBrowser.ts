@@ -45,6 +45,8 @@ const TELEGRAM_UPLOAD_MAX_ATTEMPTS = 4;
 
 type DriveEventType =
     | 'folder_created'
+    | 'folder_trashed'
+    | 'folder_restored'
     | 'folder_deleted'
     | 'file_uploaded'
     | 'file_moved'
@@ -147,8 +149,9 @@ type LocalFileLifecycle = {
 
 type LocalFolderLifecycle = {
     folderId: number;
-    state: 'deleted';
+    state: 'trashed' | 'deleted';
     updatedAt: string;
+    deletedAt?: string;
     folder?: TelegramFolder;
 };
 
@@ -276,7 +279,7 @@ export async function telegramLogout(): Promise<boolean> {
 
 export async function telegramGetFolders(forceRemote = false): Promise<TelegramFolder[]> {
     const manifest = await getDriveManifest(forceRemote);
-    return manifest.folders;
+    return manifest.folders.filter((folder) => !isFolderOrAncestorTrashed(folder, manifest.folders));
 }
 
 export async function telegramFlushManifest(): Promise<boolean> {
@@ -302,28 +305,50 @@ export async function telegramCreateFolder(name: string, parentId: number | null
 export async function telegramDeleteFolder(folderId: number): Promise<boolean> {
     const manifest = await getDriveManifest();
     const folder = manifest.folders.find((item) => item.id === folderId);
-    rememberLocalFolderLifecycle(folder || { id: folderId, name: `Folder ${folderId}` });
-    manifest.folders = manifest.folders.filter((folder) => folder.id !== folderId);
+    if (!folder) throw new Error('Folder metadata not found');
+
     const deletedAt = new Date().toISOString();
+    const folderIds = collectManifestFolderTreeIds(folderId, manifest.folders);
+    const foldersById = new Map(manifest.folders.map((item) => [item.id, item]));
+    let trashedFolders = 0;
     let trashedFiles = 0;
-    for (const messageId of Object.keys(manifest.fileFolders)) {
-        if (manifest.fileFolders[messageId] === folderId) {
-            manifest.fileFolders[messageId] = null;
-        }
-        if (manifest.files[messageId]?.folderId === folderId) {
-            const record = moveFileRecordToTrash(manifest, Number(messageId), deletedAt);
-            record.folderId = null;
-            manifest.fileFolders[messageId] = null;
+
+    for (const id of folderIds) {
+        const current = foldersById.get(id);
+        if (!current) continue;
+        const trashedFolder: TelegramFolder = {
+            ...current,
+            trashed: true,
+            deletedAt,
+            updatedAt: deletedAt,
+        };
+        replaceManifestFolder(manifest.folders, trashedFolder);
+        rememberLocalFolderLifecycle(trashedFolder, 'trashed');
+        trashedFolders++;
+    }
+
+    for (const [messageId, existing] of Object.entries(manifest.files)) {
+        const recordFolderId = existing.folderId ?? manifest.fileFolders[messageId] ?? null;
+        if (recordFolderId !== null && folderIds.has(recordFolderId)) {
+            const record = moveFileRecordToTrash(manifest, Number(messageId), deletedAt, existing);
+            record.folderId = recordFolderId;
+            manifest.fileFolders[messageId] = recordFolderId;
             rememberLocalFileLifecycle(record, 'trashed');
-            appendManifestEvent(manifest, 'file_trashed', createFileLifecyclePayload(record));
             trashedFiles++;
         }
     }
-    appendManifestEvent(manifest, 'folder_deleted', {
+
+    appendManifestEvent(manifest, 'folder_trashed', {
         folderId,
         name: folder?.name,
         parentId: folder?.parent_id ?? null,
+        folderIds: Array.from(folderIds),
+        folders: Array.from(folderIds)
+            .map((id) => foldersById.get(id))
+            .filter(Boolean),
         trashedFiles,
+        trashedFolders,
+        deletedAt,
     });
     await saveDriveManifest(manifest, 'debounced');
     return true;
@@ -416,7 +441,24 @@ export async function telegramGetStarredFiles(query?: string): Promise<TelegramF
 }
 
 export async function telegramGetTrashFiles(query?: string): Promise<TelegramFile[]> {
-    return await telegramGetFilesByRecord((record) => Boolean(record.trashed), query);
+    const manifest = await getDriveManifest();
+    const folderTrashItems = manifest.folders
+        .filter((folder) => folder.trashed && !isInsideTrashedFolder(folder, manifest.folders))
+        .filter((folder) => matchesFolderTrashQuery(folder, query))
+        .map((folder) => folderToTrashFile(folder, manifest));
+    const fileTrashItems = Object.values(manifest.files)
+        .filter((record) => Boolean(record.trashed) && !isFileInsideTrashedFolder(record, manifest))
+        .filter((record) => {
+            if (!query) return true;
+            const filters = parseSmartSearchQuery(query);
+            return matchesSmartSearch(record, filters);
+        })
+        .map(recordToTelegramFile);
+
+    return [...folderTrashItems, ...fileTrashItems].sort((a, b) => {
+        return new Date(b.deletedAt || b.created_at || 0).getTime()
+            - new Date(a.deletedAt || a.created_at || 0).getTime();
+    });
 }
 
 export async function telegramDeleteFile(messageId: number): Promise<boolean> {
@@ -452,6 +494,56 @@ export async function telegramRestoreFile(messageId: number): Promise<boolean> {
     manifest.fileFolders[key] = manifest.files[key].folderId ?? null;
     forgetLocalFileLifecycle(messageId);
     appendManifestEvent(manifest, 'file_restored', { messageId });
+    await saveDriveManifest(manifest, 'debounced');
+    return true;
+}
+
+export async function telegramRestoreFolder(folderId: number): Promise<boolean> {
+    const manifest = await getDriveManifest();
+    const folder = manifest.folders.find((item) => item.id === folderId);
+    if (!folder) throw new Error('Folder metadata not found');
+
+    const restoredAt = new Date().toISOString();
+    const folderIds = collectManifestFolderTreeIds(folderId, manifest.folders);
+    let restoredFolders = 0;
+    let restoredFiles = 0;
+
+    for (const id of folderIds) {
+        const current = manifest.folders.find((item) => item.id === id);
+        if (!current) continue;
+        replaceManifestFolder(manifest.folders, {
+            ...current,
+            trashed: false,
+            deletedAt: undefined,
+            updatedAt: restoredAt,
+        });
+        forgetLocalFolderLifecycle(id);
+        restoredFolders++;
+    }
+
+    for (const [messageId, record] of Object.entries(manifest.files)) {
+        const recordFolderId = record.folderId ?? manifest.fileFolders[messageId] ?? null;
+        if (recordFolderId === null || !folderIds.has(recordFolderId)) continue;
+        manifest.files[messageId] = {
+            ...record,
+            folderId: recordFolderId,
+            trashed: false,
+            deletedAt: undefined,
+            missing: false,
+            updatedAt: restoredAt,
+        };
+        manifest.fileFolders[messageId] = recordFolderId;
+        forgetLocalFileLifecycle(Number(messageId));
+        restoredFiles++;
+    }
+
+    appendManifestEvent(manifest, 'folder_restored', {
+        folderId,
+        folderIds: Array.from(folderIds),
+        restoredFolders,
+        restoredFiles,
+        restoredAt,
+    });
     await saveDriveManifest(manifest, 'debounced');
     return true;
 }
@@ -594,6 +686,14 @@ export async function telegramGetObjectUrl(messageId: number): Promise<string> {
     return URL.createObjectURL(blob);
 }
 
+export async function telegramPermanentlyDeleteFolder(folderId: number): Promise<boolean> {
+    const client = await authorizedTelegramClient();
+    const manifest = await getDriveManifest();
+    await permanentlyDeleteFolderFromManifest(manifest, folderId, client);
+    await saveDriveManifest(manifest, 'debounced');
+    return true;
+}
+
 export async function telegramVerifyFile(messageId: number): Promise<IntegrityResult> {
     const manifest = await getDriveManifest();
     const record = manifest.files[String(messageId)];
@@ -676,15 +776,31 @@ export async function telegramCleanupTrash(days?: number, deleteAll = false): Pr
     const manifest = await getDriveManifest();
     const retentionDays = Number.isFinite(days) ? Number(days) : manifest.settings.trashRetentionDays;
     const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
-    const candidates = Object.values(manifest.files).filter((record) => {
+    const folderCandidates = manifest.folders.filter((folder) => {
+        if (!folder.trashed || isInsideTrashedFolder(folder, manifest.folders)) return false;
+        if (deleteAll) return true;
+        return new Date(folder.deletedAt || folder.updatedAt || 0).getTime() <= cutoff;
+    });
+    const fileCandidates = Object.values(manifest.files).filter((record) => {
         if (!record.trashed) return false;
+        if (isFileInsideTrashedFolder(record, manifest)) return false;
         if (deleteAll) return true;
         return new Date(record.deletedAt || record.updatedAt || 0).getTime() <= cutoff;
     });
 
     let deleted = 0;
     let failed = 0;
-    for (const record of candidates) {
+    for (const folder of folderCandidates) {
+        try {
+            const result = await permanentlyDeleteFolderFromManifest(manifest, folder.id, client);
+            deleted += result.deletedFiles + result.deletedFolders;
+        } catch {
+            failed++;
+        }
+    }
+
+    for (const record of fileCandidates) {
+        if (!manifest.files[String(record.messageId)]) continue;
         try {
             await client.deleteMessages('me', [record.messageId], { revoke: true });
             rememberLocalFileLifecycle(record, 'deleted');
@@ -832,7 +948,7 @@ export async function telegramRepairManifest(): Promise<{
         indexed,
         refreshed,
         missing,
-        folders: manifest.folders.length,
+        folders: manifest.folders.filter((folder) => !folder.trashed).length,
         files: Object.keys(manifest.files).length,
         snapshotsKept: MANIFEST_BACKUP_COUNT,
     };
@@ -1231,11 +1347,12 @@ function readLocalFolderLifecycle(): Record<string, LocalFolderLifecycle> {
         const normalized: Record<string, LocalFolderLifecycle> = {};
         for (const [key, entry] of Object.entries(parsed || {})) {
             const folderId = Number(entry?.folderId || key);
-            if (!Number.isFinite(folderId) || entry.state !== 'deleted') continue;
+            if (!Number.isFinite(folderId) || (entry.state !== 'trashed' && entry.state !== 'deleted')) continue;
             normalized[String(folderId)] = {
                 folderId,
-                state: 'deleted',
+                state: entry.state,
                 updatedAt: typeof entry.updatedAt === 'string' ? entry.updatedAt : new Date().toISOString(),
+                deletedAt: typeof entry.deletedAt === 'string' ? entry.deletedAt : undefined,
                 folder: entry.folder ? normalizeFolderRecord(entry.folder) : undefined,
             };
         }
@@ -1249,14 +1366,21 @@ function writeLocalFolderLifecycle(entries: Record<string, LocalFolderLifecycle>
     localStorage.setItem(scopedKey(FOLDER_LIFECYCLE_KEY), JSON.stringify(entries));
 }
 
-function rememberLocalFolderLifecycle(folder: TelegramFolder) {
+function rememberLocalFolderLifecycle(folder: TelegramFolder, state: LocalFolderLifecycle['state']) {
     const entries = readLocalFolderLifecycle();
     const normalized = normalizeFolderRecord(folder);
+    const updatedAt = new Date().toISOString();
     entries[String(normalized.id)] = {
         folderId: normalized.id,
-        state: 'deleted',
-        updatedAt: new Date().toISOString(),
-        folder: normalized,
+        state,
+        updatedAt,
+        deletedAt: state === 'trashed' ? (normalized.deletedAt || updatedAt) : updatedAt,
+        folder: {
+            ...normalized,
+            trashed: state === 'trashed',
+            deletedAt: state === 'trashed' ? (normalized.deletedAt || updatedAt) : normalized.deletedAt,
+            updatedAt,
+        },
     };
     writeLocalFolderLifecycle(entries);
 }
@@ -1275,12 +1399,26 @@ function applyLocalFolderLifecycleToManifest(manifest: DriveManifest): DriveMani
     const normalized = cloneManifest(manifest);
     const entries = readLocalFolderLifecycle();
     for (const entry of Object.values(entries)) {
-        applyDeletedFolderLifecycle(
+        if (entry.folder && !normalized.folders.some((folder) => folder.id === entry.folderId)) {
+            normalized.folders.push(entry.folder);
+        }
+
+        if (entry.state === 'deleted') {
+            applyPermanentlyDeletedFolderLifecycle(
+                normalized.folders,
+                normalized.fileFolders,
+                normalized.files,
+                entry.folderId
+            );
+            continue;
+        }
+
+        applyTrashedFolderLifecycle(
             normalized.folders,
             normalized.fileFolders,
             normalized.files,
             entry.folderId,
-            entry.updatedAt
+            entry.deletedAt || entry.updatedAt
         );
     }
     return normalized;
@@ -1322,6 +1460,9 @@ function normalizeFolderRecord(folder: TelegramFolder): TelegramFolder {
     if (folder.parent_id !== undefined && folder.parent_id !== null) {
         normalized.parent_id = Number(folder.parent_id);
     }
+    normalized.trashed = Boolean(folder.trashed);
+    if (typeof folder.deletedAt === 'string') normalized.deletedAt = folder.deletedAt;
+    if (typeof folder.updatedAt === 'string') normalized.updatedAt = folder.updatedAt;
     return normalized;
 }
 
@@ -1403,6 +1544,9 @@ function normalizeFolders(folders: TelegramFolder[]): TelegramFolder[] {
         parent_id: folder.parent_id === undefined || folder.parent_id === null
             ? undefined
             : Number(folder.parent_id),
+        trashed: Boolean(folder.trashed),
+        deletedAt: typeof folder.deletedAt === 'string' ? folder.deletedAt : undefined,
+        updatedAt: typeof folder.updatedAt === 'string' ? folder.updatedAt : undefined,
     }))).filter((folder) => Number.isFinite(folder.id));
 }
 
@@ -1603,31 +1747,124 @@ function applyFolderLifecycleEvents(
         if (!Number.isFinite(folderId)) continue;
 
         if (event.type === 'folder_created') {
-            if (normalized.some((folder) => folder.id === folderId)) continue;
             const name = typeof event.payload?.name === 'string' ? event.payload.name : `Folder ${folderId}`;
             const parentId = event.payload?.parentId === null || event.payload?.parentId === undefined
                 ? null
                 : Number(event.payload.parentId);
             const folder: TelegramFolder = { id: folderId, name };
             if (Number.isFinite(parentId as number)) folder.parent_id = parentId as number;
-            normalized.push(folder);
+            replaceManifestFolder(normalized, folder);
             continue;
         }
 
-        if (event.type === 'folder_deleted') {
-            applyDeletedFolderLifecycle(normalized, fileFolders, files, folderId, event.at);
+        if (event.type === 'folder_trashed' || (event.type === 'folder_deleted' && event.payload?.permanent !== true)) {
+            hydrateFoldersFromLifecycleEvent(normalized, event);
+            const deletedAt = typeof event.payload?.deletedAt === 'string' ? event.payload.deletedAt : event.at;
+            applyTrashedFolderLifecycle(normalized, fileFolders, files, folderId, deletedAt);
+            continue;
+        }
+
+        if (event.type === 'folder_restored') {
+            applyRestoredFolderLifecycle(normalized, fileFolders, files, folderId, event.at);
+            continue;
+        }
+
+        if (event.type === 'folder_deleted' && event.payload?.permanent === true) {
+            applyPermanentlyDeletedFolderLifecycle(normalized, fileFolders, files, folderId);
         }
     }
 
     return mergeFolders(normalized);
 }
 
-function applyDeletedFolderLifecycle(
+function hydrateFoldersFromLifecycleEvent(folders: TelegramFolder[], event: DriveEvent) {
+    const payloadFolders = Array.isArray(event.payload?.folders) ? event.payload.folders : [];
+    for (const payloadFolder of payloadFolders) {
+        if (!payloadFolder || typeof payloadFolder !== 'object') continue;
+        const normalized = normalizeFolderRecord(payloadFolder as TelegramFolder);
+        if (!Number.isFinite(normalized.id)) continue;
+        if (!folders.some((folder) => folder.id === normalized.id)) {
+            folders.push(normalized);
+        }
+    }
+
+    const folderId = Number(event.payload?.folderId);
+    if (!Number.isFinite(folderId) || folders.some((folder) => folder.id === folderId)) return;
+
+    const name = typeof event.payload?.name === 'string' ? event.payload.name : `Folder ${folderId}`;
+    const parentId = event.payload?.parentId === null || event.payload?.parentId === undefined
+        ? null
+        : Number(event.payload.parentId);
+    const folder: TelegramFolder = { id: folderId, name };
+    if (Number.isFinite(parentId as number)) folder.parent_id = parentId as number;
+    folders.push(folder);
+}
+
+function applyTrashedFolderLifecycle(
     folders: TelegramFolder[],
     fileFolders: Record<string, number | null>,
     files: Record<string, DriveFileRecord>,
     folderId: number,
     deletedAt: string
+) {
+    const folderIds = collectManifestFolderTreeIds(folderId, folders);
+    for (const folder of folders) {
+        if (!folderIds.has(folder.id)) continue;
+        folder.trashed = true;
+        folder.deletedAt = folder.deletedAt || deletedAt;
+        folder.updatedAt = laterTimestamp(folder.updatedAt, deletedAt);
+    }
+
+    for (const [messageId, record] of Object.entries(files)) {
+        const recordFolderId = record.folderId ?? fileFolders[messageId] ?? null;
+        if (recordFolderId === null || !folderIds.has(recordFolderId)) continue;
+        files[messageId] = {
+            ...record,
+            folderId: recordFolderId,
+            trashed: true,
+            missing: false,
+            deletedAt: record.deletedAt || deletedAt,
+            updatedAt: laterTimestamp(record.updatedAt, deletedAt),
+        };
+        fileFolders[messageId] = recordFolderId;
+    }
+}
+
+function applyRestoredFolderLifecycle(
+    folders: TelegramFolder[],
+    fileFolders: Record<string, number | null>,
+    files: Record<string, DriveFileRecord>,
+    folderId: number,
+    restoredAt: string
+) {
+    const folderIds = collectManifestFolderTreeIds(folderId, folders);
+    for (const folder of folders) {
+        if (!folderIds.has(folder.id)) continue;
+        folder.trashed = false;
+        folder.deletedAt = undefined;
+        folder.updatedAt = laterTimestamp(folder.updatedAt, restoredAt);
+    }
+
+    for (const [messageId, record] of Object.entries(files)) {
+        const recordFolderId = record.folderId ?? fileFolders[messageId] ?? null;
+        if (recordFolderId === null || !folderIds.has(recordFolderId)) continue;
+        files[messageId] = {
+            ...record,
+            folderId: recordFolderId,
+            trashed: false,
+            deletedAt: undefined,
+            missing: false,
+            updatedAt: laterTimestamp(record.updatedAt, restoredAt),
+        };
+        fileFolders[messageId] = recordFolderId;
+    }
+}
+
+function applyPermanentlyDeletedFolderLifecycle(
+    folders: TelegramFolder[],
+    fileFolders: Record<string, number | null>,
+    files: Record<string, DriveFileRecord>,
+    folderId: number
 ) {
     const folderIds = collectManifestFolderTreeIds(folderId, folders);
     for (let index = folders.length - 1; index >= 0; index--) {
@@ -1637,22 +1874,24 @@ function applyDeletedFolderLifecycle(
     for (const [messageId, record] of Object.entries(files)) {
         const recordFolderId = record.folderId ?? fileFolders[messageId] ?? null;
         if (recordFolderId === null || !folderIds.has(recordFolderId)) continue;
-        files[messageId] = {
-            ...record,
-            folderId: null,
-            trashed: true,
-            missing: false,
-            deletedAt: record.deletedAt || deletedAt,
-            updatedAt: laterTimestamp(record.updatedAt, deletedAt),
-        };
-        fileFolders[messageId] = null;
+        delete files[messageId];
+        delete fileFolders[messageId];
     }
 
     for (const [messageId, currentFolderId] of Object.entries(fileFolders)) {
         if (currentFolderId !== null && folderIds.has(currentFolderId)) {
-            fileFolders[messageId] = null;
+            delete fileFolders[messageId];
         }
     }
+}
+
+function replaceManifestFolder(folders: TelegramFolder[], folder: TelegramFolder) {
+    const index = folders.findIndex((item) => item.id === folder.id);
+    if (index >= 0) {
+        folders[index] = normalizeFolderRecord(folder);
+        return;
+    }
+    folders.push(normalizeFolderRecord(folder));
 }
 
 function collectManifestFolderTreeIds(folderId: number, folders: TelegramFolder[]): Set<number> {
@@ -1828,6 +2067,51 @@ function createFileLifecyclePayload(record: DriveFileRecord): Record<string, unk
     };
 }
 
+async function permanentlyDeleteFolderFromManifest(
+    manifest: DriveManifest,
+    folderId: number,
+    client: TelegramClientInstance
+): Promise<{ deletedFolders: number; deletedFiles: number }> {
+    const folder = manifest.folders.find((item) => item.id === folderId);
+    if (!folder) throw new Error('Folder metadata not found');
+
+    const folderIds = collectManifestFolderTreeIds(folderId, manifest.folders);
+    const records = Object.values(manifest.files).filter((record) => {
+        const recordFolderId = record.folderId ?? manifest.fileFolders[String(record.messageId)] ?? null;
+        return recordFolderId !== null && folderIds.has(recordFolderId);
+    });
+    const messageIds = records.map((record) => record.messageId);
+
+    for (let index = 0; index < messageIds.length; index += 100) {
+        await client.deleteMessages('me', messageIds.slice(index, index + 100), { revoke: true });
+    }
+
+    for (const record of records) {
+        rememberLocalFileLifecycle(record, 'deleted');
+        delete manifest.fileFolders[String(record.messageId)];
+        delete manifest.files[String(record.messageId)];
+        await deleteOfflineCachedBlob(record.messageId).catch(() => undefined);
+    }
+
+    for (const id of folderIds) {
+        const current = manifest.folders.find((item) => item.id === id) || { id, name: `Folder ${id}` };
+        rememberLocalFolderLifecycle(current, 'deleted');
+    }
+
+    manifest.folders = manifest.folders.filter((item) => !folderIds.has(item.id));
+    appendManifestEvent(manifest, 'folder_deleted', {
+        folderId,
+        name: folder.name,
+        parentId: folder.parent_id ?? null,
+        folderIds: Array.from(folderIds),
+        permanent: true,
+        deletedFiles: records.length,
+        deletedFolders: folderIds.size,
+    });
+
+    return { deletedFolders: folderIds.size, deletedFiles: records.length };
+}
+
 function appendManifestEvent(manifest: DriveManifest, type: DriveEventType, payload: Record<string, unknown>) {
     manifest.events = normalizeEvents([
         ...(manifest.events || []),
@@ -1939,7 +2223,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.1.4-web',
+        appVersion: '1.1.5-web',
     });
 
     await client.connect();
@@ -1978,6 +2262,7 @@ function toTelegramFile(message: TelegramMessage, manifest?: DriveManifest): Tel
         tags: record?.tags || [],
         starred: record?.starred || false,
         trashed: record?.trashed || false,
+        deletedAt: record?.deletedAt,
         missing: record?.missing || false,
         checksum: record?.checksum,
         originalPath: record?.originalPath,
@@ -2006,6 +2291,7 @@ function recordToTelegramFile(record: DriveFileRecord): TelegramFile {
         tags: record.tags || [],
         starred: record.starred || false,
         trashed: record.trashed || false,
+        deletedAt: record.deletedAt,
         missing: record.missing || false,
         checksum: record.checksum,
         originalPath: record.originalPath,
@@ -2017,6 +2303,62 @@ function recordToTelegramFile(record: DriveFileRecord): TelegramFile {
         checksumVerifiedAt: record.checksumVerifiedAt,
         integrityStatus: record.integrityStatus || 'unknown',
     };
+}
+
+function folderToTrashFile(folder: TelegramFolder, manifest: DriveManifest): TelegramFile {
+    const folderIds = collectManifestFolderTreeIds(folder.id, manifest.folders);
+    const records = Object.values(manifest.files).filter((record) => {
+        const recordFolderId = record.folderId ?? manifest.fileFolders[String(record.messageId)] ?? null;
+        return recordFolderId !== null && folderIds.has(recordFolderId);
+    });
+    const size = records.reduce((sum, record) => sum + (record.size || 0), 0);
+    const itemCount = records.length + Math.max(0, folderIds.size - 1);
+    const deletedAt = folder.deletedAt || folder.updatedAt;
+
+    return {
+        id: folder.id,
+        name: folder.name,
+        size,
+        sizeStr: itemCount > 0 ? `${itemCount} item${itemCount === 1 ? '' : 's'}` : 'Folder',
+        created_at: deletedAt ? new Date(deletedAt).toLocaleString() : '',
+        type: 'folder',
+        folderId: folder.parent_id ?? null,
+        trashed: true,
+        deletedAt,
+    };
+}
+
+function matchesFolderTrashQuery(folder: TelegramFolder, query?: string): boolean {
+    if (!query) return true;
+    return normalizeSearchText(folder.name).includes(normalizeSearchText(query));
+}
+
+function isFileInsideTrashedFolder(record: DriveFileRecord, manifest: DriveManifest): boolean {
+    const folderId = record.folderId ?? manifest.fileFolders[String(record.messageId)] ?? null;
+    if (folderId === null) return false;
+    const folder = manifest.folders.find((item) => item.id === folderId);
+    return Boolean(folder && isFolderOrAncestorTrashed(folder, manifest.folders));
+}
+
+function isInsideTrashedFolder(folder: TelegramFolder, folders: TelegramFolder[]): boolean {
+    const parentId = folder.parent_id ?? null;
+    if (parentId === null) return false;
+    const parent = folders.find((item) => item.id === parentId);
+    return Boolean(parent && isFolderOrAncestorTrashed(parent, folders));
+}
+
+function isFolderOrAncestorTrashed(folder: TelegramFolder, folders: TelegramFolder[]): boolean {
+    let current: TelegramFolder | undefined = folder;
+    const seen = new Set<number>();
+
+    while (current && !seen.has(current.id)) {
+        seen.add(current.id);
+        if (current.trashed) return true;
+        const parentId: number | null = current.parent_id ?? null;
+        current = parentId === null ? undefined : folders.find((item) => item.id === parentId);
+    }
+
+    return false;
 }
 
 type SmartSearchFilters = {
@@ -2152,7 +2494,7 @@ function buildDriveStats(manifest: DriveManifest): DriveStats {
         indexedTextFiles: records.filter((record) => record.textIndex || record.ocrText).length,
         verifiedFiles: records.filter((record) => record.integrityStatus === 'valid').length,
         checksumMismatches: records.filter((record) => record.integrityStatus === 'mismatch').length,
-        folders: manifest.folders.length,
+        folders: manifest.folders.filter((folder) => !folder.trashed).length,
         backups: manifest.backups.length,
         trashRetentionDays: manifest.settings.trashRetentionDays,
         largestFiles: active

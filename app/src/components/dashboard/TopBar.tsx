@@ -1,9 +1,13 @@
-import { HardDrive, LayoutGrid, Sun, Moon, Wrench, SlidersHorizontal, Tag, Star } from 'lucide-react';
+import { CheckSquare, HardDrive, LayoutGrid, Sun, Moon, Wrench, SlidersHorizontal, Tag, Star, X } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 
 interface TopBarProps {
     currentFolderName: string;
     selectedIds: number[];
+    onSelectAll: () => void;
+    onClearSelection: () => void;
+    allSelected: boolean;
+    selectableCount: number;
     onShowMoveModal: () => void;
     onBulkDownload: () => void;
     onBulkDelete: () => void;
@@ -23,7 +27,7 @@ interface TopBarProps {
 export function TopBar({
     currentFolderName, selectedIds, onShowMoveModal, onBulkDownload, onBulkDelete,
     onDownloadFolder, onBulkTag, onBulkStar, onOpenTools, viewMode, setViewMode, searchTerm, onSearchChange, savedMessagesOnly = false,
-    onRepairDrive, isRepairing = false
+    onRepairDrive, isRepairing = false, onSelectAll, onClearSelection, allSelected, selectableCount
 }: TopBarProps) {
     const { theme, toggleTheme } = useTheme();
 
@@ -51,6 +55,11 @@ export function TopBar({
                 {selectedIds.length > 0 && (
                     <div className="flex items-center gap-2 mr-4 animate-in fade-in slide-in-from-top-2">
                         <span className="text-xs text-telegram-subtext mr-2">{selectedIds.length} Selected</span>
+                        {allSelected ? (
+                            <button onClick={onClearSelection} className="px-3 py-1.5 bg-telegram-hover hover:bg-telegram-border rounded-md text-xs text-telegram-text transition inline-flex items-center gap-1"><X className="w-3 h-3" /> Clear</button>
+                        ) : selectableCount > selectedIds.length && (
+                            <button onClick={onSelectAll} className="px-3 py-1.5 bg-telegram-hover hover:bg-telegram-border rounded-md text-xs text-telegram-text transition inline-flex items-center gap-1"><CheckSquare className="w-3 h-3" /> Select All</button>
+                        )}
                         {!savedMessagesOnly && <button onClick={onShowMoveModal} className="px-3 py-1.5 bg-telegram-primary/20 hover:bg-telegram-primary/30 text-telegram-primary rounded-md text-xs transition font-medium">Move to...</button>}
                         <button onClick={onBulkTag} className="px-3 py-1.5 bg-telegram-hover hover:bg-telegram-border rounded-md text-xs text-telegram-text transition inline-flex items-center gap-1"><Tag className="w-3 h-3" /> Tags</button>
                         <button onClick={onBulkStar} className="px-3 py-1.5 bg-telegram-hover hover:bg-telegram-border rounded-md text-xs text-telegram-text transition inline-flex items-center gap-1"><Star className="w-3 h-3" /> Star</button>

@@ -105,8 +105,8 @@ export function DriveToolsModal({
             days: retentionDays,
             deleteAll,
         });
-        toast.success(`Trash cleanup deleted ${result.deleted} file(s).`);
-        if (result.failed > 0) toast.error(`${result.failed} file(s) could not be deleted.`);
+        toast.success(`Trash cleanup deleted ${result.deleted} item(s).`);
+        if (result.failed > 0) toast.error(`${result.failed} item(s) could not be deleted.`);
     });
 
     const clearCache = () => runBusy('cache', async () => {

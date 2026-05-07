@@ -199,7 +199,7 @@ export function useTelegramConnection(onLogoutParent: () => void) {
         const folderIdsToDelete = collectFolderTreeIds(folderId, foldersRef.current);
         const nestedCount = folderIdsToDelete.size - 1;
         const deleteMessage = savedMessagesDefault
-            ? `Move "${folderName}"${nestedCount > 0 ? ` and ${nestedCount} nested folder(s)` : ''} to Trash?\nFiles inside this folder will move to Telegram Drive Trash and stay hidden after Sync.`
+            ? `Move "${folderName}"${nestedCount > 0 ? ` and ${nestedCount} nested folder(s)` : ''} to Trash?\nIt will appear as one restorable folder in Trash with its contents.`
             : `Are you sure you want to delete "${folderName}"?\nThis will delete the channel on Telegram.`;
 
         if (!await confirm({
@@ -210,8 +210,12 @@ export function useTelegramConnection(onLogoutParent: () => void) {
         })) return;
 
         try {
-            for (const id of folderIdsToDelete) {
-                await invokeCommand('cmd_delete_folder', { folderId: id });
+            if (savedMessagesDefault) {
+                await invokeCommand('cmd_delete_folder', { folderId });
+            } else {
+                for (const id of folderIdsToDelete) {
+                    await invokeCommand('cmd_delete_folder', { folderId: id });
+                }
             }
             if (savedMessagesDefault) {
                 await invokeCommand('cmd_flush_manifest').catch(() => undefined);
@@ -224,7 +228,7 @@ export function useTelegramConnection(onLogoutParent: () => void) {
                 await store.save();
             }
             if (activeFolderId !== null && folderIdsToDelete.has(activeFolderId)) setActiveFolderId(null);
-            toast.success(`Folder "${folderName}" deleted.`);
+            toast.success(savedMessagesDefault ? `Folder "${folderName}" moved to Trash.` : `Folder "${folderName}" deleted.`);
         } catch (e: unknown) {
             const errStr = String(e);
             if (errStr.includes("not found")) {

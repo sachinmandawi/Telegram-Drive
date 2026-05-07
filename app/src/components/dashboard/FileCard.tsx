@@ -133,17 +133,15 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
                 )}
 
                 {/* Selection Checkmark */}
-                {!isFolder && (
-                    <div
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (onToggleSelection) onToggleSelection();
-                        }}
-                        className={`absolute top-2 left-2 w-5 h-5 rounded-full border flex items-center justify-center transition-all z-10 cursor-pointer ${isSelected ? 'bg-telegram-primary border-telegram-primary' : 'border-white/50 bg-black/30 opacity-0 group-hover:opacity-100'}`}
-                    >
-                        {isSelected && <div className="w-1.5 h-1.5 bg-black rounded-full" />}
-                    </div>
-                )}
+                <div
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (onToggleSelection) onToggleSelection();
+                    }}
+                    className={`absolute top-2 left-2 w-5 h-5 rounded-full border flex items-center justify-center transition-all z-10 cursor-pointer ${isSelected ? 'bg-telegram-primary border-telegram-primary' : 'border-white/50 bg-black/30 opacity-0 group-hover:opacity-100'}`}
+                >
+                    {isSelected && <div className="w-1.5 h-1.5 bg-black rounded-full" />}
+                </div>
 
                 {file.starred && !isFolder && (
                     <div className="absolute top-2 left-9 w-5 h-5 rounded-full bg-black/40 flex items-center justify-center z-10">

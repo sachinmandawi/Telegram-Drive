@@ -29,11 +29,13 @@ import {
     telegramLogout,
     telegramMoveFiles,
     telegramPrepareAddAccount,
+    telegramPermanentlyDeleteFolder,
     telegramPermanentlyDeleteFile,
     telegramCleanupTrash,
     telegramClearOfflineCache,
     telegramRepairManifest,
     telegramRequestCode,
+    telegramRestoreFolder,
     telegramRestoreFile,
     telegramSearchFiles,
     telegramSetTrashRetention,
@@ -72,6 +74,7 @@ type WebFileRecord = {
     tags?: string[];
     starred?: boolean;
     trashed?: boolean;
+    deletedAt?: string;
     checksum?: string;
     textIndex?: string;
     integrityStatus?: 'unknown' | 'valid' | 'mismatch';
@@ -476,7 +479,7 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
             await trashWebFile(Number(args.messageId));
             return true as T;
         case 'cmd_restore_file':
-            await updateWebFile(Number(args.messageId), (record) => ({ ...record, trashed: false }));
+            await updateWebFile(Number(args.messageId), (record) => ({ ...record, trashed: false, deletedAt: undefined }));
             return true as T;
         case 'cmd_permanent_delete_file':
             await deleteWebFile(Number(args.messageId));
@@ -597,8 +600,14 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
         case 'cmd_delete_file':
             return await telegramDeleteFile(Number(args.messageId)) as T;
         case 'cmd_restore_file':
+            if (args.itemType === 'folder') {
+                return await telegramRestoreFolder(Number(args.messageId)) as T;
+            }
             return await telegramRestoreFile(Number(args.messageId)) as T;
         case 'cmd_permanent_delete_file':
+            if (args.itemType === 'folder') {
+                return await telegramPermanentlyDeleteFolder(Number(args.messageId)) as T;
+            }
             return await telegramPermanentlyDeleteFile(Number(args.messageId)) as T;
         case 'cmd_toggle_star':
             return await telegramToggleStarFile(
@@ -688,6 +697,7 @@ function toTelegramFile(record: WebFileRecord): TelegramFile {
         tags: record.tags || [],
         starred: record.starred || false,
         trashed: record.trashed || false,
+        deletedAt: record.deletedAt,
         checksum: record.checksum,
         integrityStatus: record.integrityStatus || 'unknown',
     };
@@ -748,7 +758,7 @@ async function updateWebFile(id: number, updater: (record: WebFileRecord) => Web
 }
 
 async function trashWebFile(id: number): Promise<void> {
-    await updateWebFile(id, (record) => ({ ...record, trashed: true }));
+    await updateWebFile(id, (record) => ({ ...record, trashed: true, deletedAt: new Date().toISOString() }));
 }
 
 async function getAllWebFiles(): Promise<WebFileRecord[]> {
@@ -789,6 +799,7 @@ async function getWebTrashFiles(query: string): Promise<TelegramFile[]> {
     return records
         .filter((record) => record.trashed)
         .filter((record) => !normalized || record.name.toLowerCase().includes(normalized))
+        .sort((a, b) => new Date(b.deletedAt || b.created_at || 0).getTime() - new Date(a.deletedAt || a.created_at || 0).getTime())
         .map(toTelegramFile);
 }
 
@@ -814,7 +825,7 @@ async function deleteWebFolder(folderId: number): Promise<void> {
     const records = await getAllWebFiles();
     const recordsToDelete = records.filter((record) => record.folderId === folderId);
     for (const record of recordsToDelete) {
-        await deleteWebFile(record.id);
+        await trashWebFile(record.id);
     }
 }
 
