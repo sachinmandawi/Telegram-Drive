@@ -57,7 +57,7 @@ jobs:
             target: ''
             
           # macOS Intel
-          - platform: macos-latest
+          - platform: macos-13
             args: '--target x86_64-apple-darwin'
             target: 'x86_64-apple-darwin'
           
