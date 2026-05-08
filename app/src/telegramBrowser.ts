@@ -367,11 +367,14 @@ export async function telegramDeleteFolder(folderId: number): Promise<boolean> {
 export async function telegramMoveFiles(
     messageIds: number[],
     targetFolderId: number | null,
-    conflictStrategy: NameConflictStrategy = 'keep_both'
+    conflictStrategy: NameConflictStrategy = 'keep_both',
+    targetFolderName?: string,
+    targetParentIdHint?: number | null
 ): Promise<boolean> {
     const manifest = await getDriveManifest();
     const updatedAt = new Date().toISOString();
     const strategy = normalizeConflictStrategy(conflictStrategy);
+    ensureDestinationFolderRecord(manifest, targetFolderId, targetFolderName, targetParentIdHint);
     let moved = 0;
     for (const messageId of messageIds) {
         if (moveFileRecordToFolderWithConflict(manifest, Number(messageId), targetFolderId, strategy, updatedAt)) moved++;
@@ -384,11 +387,14 @@ export async function telegramMoveFiles(
 export async function telegramMoveFolders(
     folderIds: number[],
     targetParentId: number | null,
-    conflictStrategy: NameConflictStrategy = 'keep_both'
+    conflictStrategy: NameConflictStrategy = 'keep_both',
+    targetFolderName?: string,
+    targetParentIdHint?: number | null
 ): Promise<boolean> {
     const manifest = await getDriveManifest();
     const updatedAt = new Date().toISOString();
     const strategy = normalizeConflictStrategy(conflictStrategy);
+    ensureDestinationFolderRecord(manifest, targetParentId, targetFolderName, targetParentIdHint);
     const moving = new Set(folderIds.filter((id) => Number.isFinite(id)));
     for (const folderId of moving) {
         if (targetParentId !== null && collectManifestFolderTreeIds(folderId, manifest.folders).has(targetParentId)) {
@@ -2962,6 +2968,39 @@ function ensureCreateFolderParent(manifest: DriveManifest, parentId: number | nu
     });
 }
 
+function ensureDestinationFolderRecord(
+    manifest: DriveManifest,
+    folderId: number | null,
+    folderName?: string,
+    parentIdHint?: number | null
+) {
+    if (folderId === null) return;
+    const existing = manifest.folders.find((folder) => folder.id === folderId);
+    if (existing) return;
+
+    const parentId = typeof parentIdHint === 'number'
+        && parentIdHint !== folderId
+        && manifest.folders.some((folder) => folder.id === parentIdHint && !folder.trashed)
+        ? parentIdHint
+        : null;
+    const restoredFolder: TelegramFolder = {
+        id: folderId,
+        name: folderName?.trim() || `Folder ${folderId}`,
+        updatedAt: new Date().toISOString(),
+    };
+    if (parentId !== null) restoredFolder.parent_id = parentId;
+
+    replaceManifestFolder(manifest.folders, restoredFolder);
+    forgetLocalFolderLifecycle(folderId);
+    appendManifestEvent(manifest, 'folder_created', {
+        folderId,
+        name: restoredFolder.name,
+        parentId,
+        restoredPlaceholder: true,
+        restoredForMove: true,
+    });
+}
+
 function assertFileAccessible(manifest: DriveManifest, record: DriveFileRecord, action: string) {
     if (isFileProtectedAndLocked(record)) throw new Error(`File "${record.name}" is protected. Unlock it before ${action}.`);
     for (const folderId of getManifestFolderAncestryIds(record.folderId ?? null, manifest.folders)) {
@@ -3295,7 +3334,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.1.17-web',
+        appVersion: '1.1.18-web',
     });
 
     await client.connect();

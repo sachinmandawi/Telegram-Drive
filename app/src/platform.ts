@@ -728,13 +728,17 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
             return await telegramMoveFiles(
                 (args.messageIds as number[] | undefined) || [],
                 (args.targetFolderId as number | null | undefined) ?? null,
-                args.conflictStrategy as 'keep_both' | 'replace' | 'skip' | 'merge' | undefined
+                args.conflictStrategy as 'keep_both' | 'replace' | 'skip' | 'merge' | undefined,
+                typeof args.targetFolderName === 'string' ? args.targetFolderName : undefined,
+                typeof args.targetParentIdHint === 'number' ? args.targetParentIdHint : null
             ) as T;
         case 'cmd_move_folders':
             return await telegramMoveFolders(
                 (args.folderIds as number[] | undefined) || [],
                 (args.targetParentId as number | null | undefined) ?? null,
-                args.conflictStrategy as 'keep_both' | 'replace' | 'skip' | 'merge' | undefined
+                args.conflictStrategy as 'keep_both' | 'replace' | 'skip' | 'merge' | undefined,
+                typeof args.targetFolderName === 'string' ? args.targetFolderName : undefined,
+                typeof args.targetParentIdHint === 'number' ? args.targetParentIdHint : null
             ) as T;
         case 'cmd_get_stream_info':
             return ({ token: 'browser-telegram', base_url: '' } satisfies StreamInfo) as T;

@@ -355,12 +355,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         const folderIds = selectedItems.filter((item) => item.type === 'folder').map((item) => item.id);
         const conflictStrategy = resolveMoveConflictStrategy(selectedItems, folders, targetFolderId, moveConflictStrategy);
         if (!conflictStrategy) return;
+        const targetHint = getFolderTargetHint(targetFolderId, folders);
         try {
             if (files.length > 0) {
-                await invokeCommand('cmd_move_files', { messageIds: files, targetFolderId, conflictStrategy });
+                await invokeCommand('cmd_move_files', { messageIds: files, targetFolderId, conflictStrategy, ...targetHint });
             }
             if (folderIds.length > 0) {
-                await invokeCommand('cmd_move_folders', { folderIds, targetParentId: targetFolderId, conflictStrategy });
+                await invokeCommand('cmd_move_folders', { folderIds, targetParentId: targetFolderId, conflictStrategy, ...targetHint });
             }
             if (savedMessagesDefault) await invokeCommand('cmd_flush_manifest').catch(() => undefined);
             setShowMoveModal(false);
@@ -653,16 +654,18 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     const sourceFolderId = item.folderId ?? null;
                     filesBySourceFolder.set(sourceFolderId, [...(filesBySourceFolder.get(sourceFolderId) || []), item.id]);
                 }
+                const targetHint = getFolderTargetHint(targetFolderId, folders);
 
                 if (folderIds.length > 0) {
-                    await invokeCommand('cmd_move_folders', { folderIds, targetParentId: targetFolderId, conflictStrategy: 'keep_both' });
+                    await invokeCommand('cmd_move_folders', { folderIds, targetParentId: targetFolderId, conflictStrategy: 'keep_both', ...targetHint });
                 }
                 for (const [sourceFolderId, messageIds] of filesBySourceFolder) {
                     await invokeCommand('cmd_move_files', {
                         messageIds,
                         sourceFolderId,
                         targetFolderId: targetFolderId,
-                        conflictStrategy: 'keep_both'
+                        conflictStrategy: 'keep_both',
+                        ...targetHint,
                     });
                 }
 
@@ -1382,6 +1385,15 @@ function getReadableFolderPath(folderId: number | null, folders: TelegramFolder[
 function getItemLocationLabel(item: TelegramFile, folders: TelegramFolder[]): string {
     const parentId = item.type === 'folder' ? item.folderId ?? null : item.folderId ?? null;
     return getReadableFolderPath(parentId, folders);
+}
+
+function getFolderTargetHint(folderId: number | null, folders: TelegramFolder[]) {
+    if (folderId === null) return {};
+    const folder = folders.find((item) => item.id === folderId);
+    return {
+        targetFolderName: folder?.name,
+        targetParentIdHint: folder?.parent_id ?? null,
+    };
 }
 
 function formatRelativeSyncTime(date: Date): string {

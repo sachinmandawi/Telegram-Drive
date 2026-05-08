@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.18] - 2026-05-08
+
+### Move Target Metadata Fix
+
+- Fixed Move to Folder failing with `Target folder metadata not found` when the UI still had a valid local folder record but the Saved Messages manifest was missing that folder metadata.
+- Move now passes the target folder name/parent hint and restores the missing virtual folder record before applying file or folder moves.
+
 ## [1.1.17] - 2026-05-08
 
 ### Stable Drive Flow Pack
