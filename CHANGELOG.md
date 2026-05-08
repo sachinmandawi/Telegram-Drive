@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.23] - 2026-05-08
+
+### Android Mobile Compile Fix
+
+- Fixed Android compilation by skipping the desktop-only window-state plugin on mobile builds.
+- Desktop builds still keep window-state restore behavior.
+
 ## [1.1.22] - 2026-05-08
 
 ### Android Release Workflow Fix
