@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import { TelegramFile } from '../types';
 import { downloadBrowserFile, invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime, openTauriDirectoryDialog, saveTauriFileDialog } from '../platform';
-import { formatBytes } from '../utils';
+import { formatBytes, friendlyDriveError } from '../utils';
 
 export function useFileOperations(
     activeFolderId: number | null,
@@ -23,7 +23,7 @@ export function useFileOperations(
             message: "Move this file to Telegram Drive trash? You can restore it later or delete it forever from Trash.",
             confirmText: "Move to Trash",
             variant: 'danger'
-        })) return;
+        })) return false;
         try {
             await invokeCommand('cmd_delete_file', { messageId: id, folderId: activeFolderId });
             if (savedMessagesMode) {
@@ -40,19 +40,21 @@ export function useFileOperations(
                     },
                 },
             });
+            return true;
         } catch (e) {
-            toast.error(`Delete failed: ${e}`);
+            toast.error(`Delete failed: ${friendlyDriveError(e)}`);
+            return false;
         }
     }
 
     const handleBulkDelete = async () => {
-        if (selectedIds.length === 0) return;
+        if (selectedIds.length === 0) return false;
         if (!await confirm({
             title: "Move Files to Trash",
             message: `Move ${selectedIds.length} files to Telegram Drive trash? You can restore them later or delete them forever from Trash.`,
             confirmText: "Move All",
             variant: 'danger'
-        })) return;
+        })) return false;
 
         let success = 0;
         let fail = 0;
@@ -71,6 +73,7 @@ export function useFileOperations(
         queryClient.invalidateQueries({ queryKey: ['files'] });
         if (success > 0) toast.success(`Moved ${success} files to Trash.`);
         if (fail > 0) toast.error(`Failed to delete ${fail} files.`);
+        return success > 0;
     }
 
     const handleDownload = async (id: number, name: string) => {
@@ -86,7 +89,7 @@ export function useFileOperations(
             }
             toast.success(`Download complete: ${name}`);
         } catch (e) {
-            toast.error(`Download failed: ${e}`);
+            toast.error(`Download failed: ${friendlyDriveError(e)}`);
         }
     }
 
@@ -115,7 +118,7 @@ export function useFileOperations(
             toast.success(`Downloaded ${successCount} files.`);
             setSelectedIds([]);
         } catch (e) {
-            toast.error(`Bulk download failed: ${e}`);
+            toast.error(`Bulk download failed: ${friendlyDriveError(e)}`);
         }
     }
 
@@ -131,8 +134,8 @@ export function useFileOperations(
             queryClient.invalidateQueries({ queryKey: ['files', activeFolderId] });
             setSelectedIds([]);
             if (onSuccess) onSuccess();
-        } catch {
-            toast.error('Failed to move files');
+        } catch (e) {
+            toast.error(`Move failed: ${friendlyDriveError(e)}`);
         }
     };
 
@@ -161,7 +164,7 @@ export function useFileOperations(
             }
             toast.success(`Folder Download Complete: ${successCount} files.`);
         } catch (e) {
-            toast.error("Error: " + e);
+            toast.error(`Download folder failed: ${friendlyDriveError(e)}`);
         }
     }
 

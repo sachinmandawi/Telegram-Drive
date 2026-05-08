@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { TelegramFile, BandwidthStats, TelegramFolder, DriveView } from '../types';
-import { formatBytes, isMediaFile, isPdfFile } from '../utils';
+import { formatBytes, friendlyDriveError, isMediaFile, isPdfFile } from '../utils';
 
 // Components
 import { Sidebar } from './dashboard/Sidebar';
@@ -73,6 +73,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const [isRepairingDrive, setIsRepairingDrive] = useState(false);
     const [showTools, setShowTools] = useState(false);
     const [tagTarget, setTagTarget] = useState<TelegramFile | 'bulk' | null>(null);
+    const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+    const [highlightedId, setHighlightedId] = useState<number | null>(null);
 
     useEffect(() => {
         if (store) {
@@ -147,9 +149,32 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     } = useFileOperations(activeFolderId, selectedIds, setSelectedIds, displayedFileItems);
 
-    const { uploadQueue, setUploadQueue, handleManualUpload, handleDroppedFiles, queueFileEntries, cancelAll: cancelUploads, retryFailed: retryFailedUploads, isDragging } = useFileUpload(activeFolderId, store);
+    const uploadTargetLabel = useMemo(() => (
+        driveView === 'files' ? getReadableFolderPath(activeFolderId, folders) : 'Saved Messages'
+    ), [activeFolderId, driveView, folders]);
+
+    const {
+        uploadQueue, setUploadQueue, handleManualUpload, handleDroppedFiles, queueFileEntries,
+        cancelAll: cancelUploads, retryFailed: retryFailedUploads, retryItem: retryUploadItem,
+        removeItem: removeUploadItem, isDragging
+    } = useFileUpload(activeFolderId, store, uploadTargetLabel);
     const { downloadQueue, queueDownload, clearFinished: clearDownloads, cancelAll: cancelDownloads, retryFailed: retryFailedDownloads } = useFileDownload(store);
     const watchFolder = useWatchFolderSync(activeFolderId, store, queueFileEntries);
+
+    const handleSyncAndStamp = useCallback(async () => {
+        await handleSyncFolders();
+        setLastSyncAt(new Date());
+    }, [handleSyncFolders]);
+
+    const syncStatusText = useMemo(() => {
+        const activeUploads = uploadQueue.filter((item) => item.status === 'pending' || item.status === 'uploading').length;
+        const failedUploads = uploadQueue.filter((item) => item.status === 'error' || item.status === 'cancelled').length;
+        if (isSyncing) return 'Syncing...';
+        if (failedUploads > 0) return `${failedUploads} upload${failedUploads === 1 ? '' : 's'} need retry`;
+        if (activeUploads > 0) return `${activeUploads} upload${activeUploads === 1 ? '' : 's'} in queue`;
+        if (lastSyncAt) return `Synced ${formatRelativeSyncTime(lastSyncAt)}`;
+        return 'Ready';
+    }, [isSyncing, lastSyncAt, uploadQueue]);
 
     const handleClearSelection = useCallback(() => {
         setSelectedIds([]);
@@ -185,21 +210,50 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }, [unlockedProtectedIds]);
 
     const restoreItems = useCallback(async (items: TelegramFile[]) => {
+        const missingOriginalParents = items.filter((item) => {
+            const parentId = item.folderId ?? null;
+            return parentId !== null && !folders.some((folder) => folder.id === parentId && !folder.trashed);
+        });
+        if (missingOriginalParents.length > 0) {
+            const ok = await confirm({
+                title: "Restore to Saved Messages",
+                message: `${missingOriginalParents.length} item(s) have a missing original folder. Restore them to Saved Messages instead?`,
+                confirmText: "Restore",
+                variant: 'info',
+            });
+            if (!ok) return;
+        }
+
         let restored = 0;
         let failed = 0;
+        let lastError: unknown = null;
         for (const item of items) {
             try {
                 await invokeCommand('cmd_restore_file', { messageId: item.id, itemType: item.type || 'file' });
                 restored++;
-            } catch {
+            } catch (e) {
+                lastError = e;
                 failed++;
             }
         }
         queryClient.invalidateQueries({ queryKey: ['files'] });
-        await handleSyncFolders();
+        await handleSyncAndStamp();
         if (restored > 0) toast.success(`Restored ${restored} item(s).`);
-        if (failed > 0) toast.error(`Failed to restore ${failed} item(s).`);
-    }, [handleSyncFolders, queryClient]);
+        if (failed > 0) {
+            const message = friendlyDriveError(lastError);
+            toast.error(`Failed to restore ${failed} item(s): ${message}`, savedMessagesDefault ? {
+                action: {
+                    label: 'Repair Index',
+                    onClick: () => {
+                        void invokeCommand('cmd_repair_manifest')
+                            .then(handleSyncAndStamp)
+                            .then(() => toast.success('Index repaired. Try restore again.'))
+                            .catch((err) => toast.error(`Repair failed: ${friendlyDriveError(err)}`));
+                    },
+                },
+            } : undefined);
+        }
+    }, [confirm, folders, handleSyncAndStamp, queryClient, savedMessagesDefault]);
 
     const handleSelectedDelete = useCallback(async () => {
         if (selectedIds.length === 0) return;
@@ -231,7 +285,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             }
             setSelectedIds([]);
             queryClient.invalidateQueries({ queryKey: ['files'] });
-            await handleSyncFolders();
+            await handleSyncAndStamp();
             if (success > 0) toast.success(`Permanently deleted ${success} item(s).`);
             if (fail > 0) toast.error(`Failed to delete ${fail} item(s).`);
             return;
@@ -239,7 +293,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
         const foldersToDelete = selectedItems.filter((item) => item.type === 'folder');
         if (foldersToDelete.length === 0) {
-            handleBulkDelete();
+            const deleted = await handleBulkDelete();
+            if (deleted) await handleSyncAndStamp();
             return;
         }
 
@@ -276,7 +331,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         }
             setSelectedIds([]);
             queryClient.invalidateQueries({ queryKey: ['files'] });
-            await handleSyncFolders();
+            await handleSyncAndStamp();
             if (success > 0) {
                 toast.success(`Moved ${success} item(s) to Trash.`, {
                     action: {
@@ -288,7 +343,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 });
             }
             if (fail > 0) toast.error(`Failed to move ${fail} item(s).`);
-    }, [activeFolderId, confirm, displayedFiles, driveView, ensureProtectedAccess, handleBulkDelete, handleSyncFolders, queryClient, restoreItems, savedMessagesDefault, selectedIds]);
+    }, [activeFolderId, confirm, displayedFiles, driveView, ensureProtectedAccess, handleBulkDelete, handleSyncAndStamp, queryClient, restoreItems, savedMessagesDefault, selectedIds]);
 
     const handleMoveSelection = useCallback(async (targetFolderId: number | null) => {
         const selectedItems = displayedFiles.filter((item) => selectedIds.includes(item.id));
@@ -312,12 +367,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             setMoveConflictStrategy('keep_both');
             setSelectedIds([]);
             queryClient.invalidateQueries({ queryKey: ['files'] });
-            await handleSyncFolders();
+            await handleSyncAndStamp();
             toast.success(`Moved ${selectedItems.length} item(s).`);
         } catch (e) {
-            toast.error(`Move failed: ${e}`);
+            toast.error(`Move failed: ${friendlyDriveError(e)}`);
         }
-    }, [displayedFiles, ensureProtectedAccess, folders, handleSyncFolders, moveConflictStrategy, queryClient, savedMessagesDefault, selectedIds]);
+    }, [displayedFiles, ensureProtectedAccess, folders, handleSyncAndStamp, moveConflictStrategy, queryClient, savedMessagesDefault, selectedIds]);
 
     const handleKeyboardDelete = useCallback(() => {
         if (selectedIds.length > 0) {
@@ -409,13 +464,16 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 })) as TelegramFile[]);
             } else {
                 const results = await handleGlobalSearch(searchTerm);
-                setSearchResults(results);
+                const folderResults = folders
+                    .filter((folder) => !folder.trashed && folder.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                    .map(folderToExplorerItem);
+                setSearchResults([...folderResults, ...results]);
             }
             setIsSearching(false);
         }, 500);
 
         return () => clearTimeout(timer);
-    }, [activeTrashFolderId, currentFolderItems, driveView, handleGlobalSearch, searchScope, searchTerm]);
+    }, [activeTrashFolderId, currentFolderItems, driveView, folders, handleGlobalSearch, searchScope, searchTerm]);
 
 
 
@@ -427,6 +485,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             setSelectedIds(ids => ids.includes(id) ? ids.filter(i => i !== id) : [...ids, id]);
             return;
         }
+        if (!clicked) return;
+        setHighlightedId(null);
         if (clicked?.type === 'folder') {
             if (driveView === 'trash' || clicked.trashed) {
                 setActiveTrashFolderId(id);
@@ -436,7 +496,22 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             }
             if (!await ensureProtectedAccess(clicked, 'open')) return;
             setActiveFolderId(id);
+            if (searchTerm.length > 2) {
+                setSearchTerm("");
+                setSearchResults([]);
+            }
         } else {
+            if (searchTerm.length > 2 && searchScope === 'drive' && driveView === 'files') {
+                await setActiveFolderId(clicked?.folderId ?? null);
+                setSearchTerm("");
+                setSearchResults([]);
+                window.setTimeout(() => {
+                    setSelectedIds([id]);
+                    setHighlightedId(id);
+                }, 0);
+                toast.info(`Opened location: ${getItemLocationLabel(clicked, folders)}`);
+                return;
+            }
             setSelectedIds([id]);
         }
     }
@@ -455,6 +530,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             }
             if (!await ensureProtectedAccess(file, 'open')) return;
             setActiveFolderId(file.id);
+            if (searchTerm.length > 2) {
+                setSearchTerm("");
+                setSearchResults([]);
+            }
             return;
         }
 
@@ -589,15 +668,15 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
                 queryClient.invalidateQueries({ queryKey: ['files', activeFolderId] });
                 if (savedMessagesDefault) await invokeCommand('cmd_flush_manifest').catch(() => undefined);
-                await handleSyncFolders();
+                await handleSyncAndStamp();
 
                 if (selectedIds.includes(fileId)) setSelectedIds([]);
 
                 toast.success(`Moved ${selectedItems.length} item(s).`);
 
                 setInternalDragFileId(null);
-            } catch {
-                toast.error(`Failed to move item(s).`);
+            } catch (e) {
+                toast.error(`Move failed: ${friendlyDriveError(e)}`);
             }
         }
     }
@@ -687,7 +766,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
         const uploadParentId = activeFolderId;
         const rootFolder = await getOrCreateFolder(folderName, uploadParentId);
-        const uploadEntries: { file: File; folderId: number | null }[] = [];
+        const uploadEntries: { file: File; folderId: number | null; targetLabel?: string }[] = [];
 
         for (const file of files) {
             const relativePath = getBrowserRelativePath(file);
@@ -699,7 +778,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 targetFolder = await getOrCreateFolder(directoryName, targetFolder.id);
             }
 
-            uploadEntries.push({ file, folderId: targetFolder.id });
+            uploadEntries.push({ file, folderId: targetFolder.id, targetLabel: getReadableFolderPath(targetFolder.id, knownFolders) });
         }
 
         await setActiveFolderId(rootFolder.id);
@@ -712,7 +791,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         const folder = folders.find(f => f.id === id);
         if (folder) {
             if (!await ensureProtectedAccess(folderToExplorerItem(folder), 'delete')) return;
-            handleFolderDelete(folder.id, folder.name);
+            await handleFolderDelete(folder.id, folder.name);
+            await handleSyncAndStamp();
             return;
         }
         if (driveView === 'trash') {
@@ -729,17 +809,18 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             try {
                 await invokeCommand('cmd_permanent_delete_file', { messageId: id, itemType: file.type || 'file' });
                 queryClient.invalidateQueries({ queryKey: ['files'] });
-                await handleSyncFolders();
+                await handleSyncAndStamp();
                 toast.success(file.type === 'folder' ? "Folder permanently deleted" : "File permanently deleted");
             } catch (e) {
-                toast.error(`Permanent delete failed: ${e}`);
+                toast.error(`Permanent delete failed: ${friendlyDriveError(e)}`);
             }
             return;
         }
         const file = displayedFiles.find(f => f.id === id);
         if (file && !await ensureProtectedAccess(file, 'delete')) return;
-        handleDelete(id);
-    }, [confirm, displayedFiles, driveView, ensureProtectedAccess, folders, handleDelete, handleFolderDelete, handleSyncFolders, queryClient]);
+        const deleted = await handleDelete(id);
+        if (deleted) await handleSyncAndStamp();
+    }, [confirm, displayedFiles, driveView, ensureProtectedAccess, folders, handleDelete, handleFolderDelete, handleSyncAndStamp, queryClient]);
 
     const handleExplorerDownload = useCallback((id: number, name: string) => {
         const item = displayedFiles.find(f => f.id === id);
@@ -774,15 +855,15 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 files: number;
                 snapshotsKept: number;
             }>('cmd_repair_manifest');
-            await handleSyncFolders();
+            await handleSyncAndStamp();
             queryClient.invalidateQueries({ queryKey: ['files'] });
             toast.success(`Index repaired: ${result.files} file record(s), ${result.folders} folder(s), ${result.snapshotsKept} snapshots kept.`);
         } catch (e) {
-            toast.error(`Repair failed: ${e}`);
+            toast.error(`Repair failed: ${friendlyDriveError(e)}`);
         } finally {
             setIsRepairingDrive(false);
         }
-    }, [handleSyncFolders, queryClient, savedMessagesDefault]);
+    }, [handleSyncAndStamp, queryClient, savedMessagesDefault]);
 
     const handleSelectedBulkDownload = useCallback(() => {
         if (selectedFileCount === 0) {
@@ -815,7 +896,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             setTagTarget(null);
             if (target === 'bulk') setSelectedIds([]);
         } catch (e) {
-            toast.error(`Tag update failed: ${e}`);
+            toast.error(`Tag update failed: ${friendlyDriveError(e)}`);
         }
     }, [displayedFileItems, queryClient, selectedIds, tagTarget]);
 
@@ -825,7 +906,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             queryClient.invalidateQueries({ queryKey: ['files'] });
             toast.success(result.valid ? 'Checksum verified' : 'Checksum mismatch detected');
         } catch (e) {
-            toast.error(`Verify failed: ${e}`);
+            toast.error(`Verify failed: ${friendlyDriveError(e)}`);
         }
     }, [queryClient]);
 
@@ -836,12 +917,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         try {
             await invokeCommand('cmd_rename_item', { messageId: file.id, itemType: file.type || 'file', name: nextName });
             queryClient.invalidateQueries({ queryKey: ['files'] });
-            await handleSyncFolders();
+            await handleSyncAndStamp();
             toast.success(`Renamed to "${nextName}"`);
         } catch (e) {
-            toast.error(`Rename failed: ${e}`);
+            toast.error(`Rename failed: ${friendlyDriveError(e)}`);
         }
-    }, [ensureProtectedAccess, handleSyncFolders, queryClient]);
+    }, [ensureProtectedAccess, handleSyncAndStamp, queryClient]);
 
     const handleCreateFolderHere = useCallback(async () => {
         if (driveView !== 'files') {
@@ -851,13 +932,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         const name = window.prompt('New folder name', 'New Folder')?.trim();
         if (!name) return;
         try {
-            await handleCreateFolder(name, activeFolderId);
+            await handleCreateFolder(name, activeFolderId, true);
             queryClient.invalidateQueries({ queryKey: ['files'] });
-            await handleSyncFolders();
+            await handleSyncAndStamp();
+            toast.success(`Created "${name}" in ${uploadTargetLabel}.`);
         } catch {
             // hook already shows the error
         }
-    }, [activeFolderId, driveView, handleCreateFolder, handleSyncFolders, queryClient]);
+    }, [activeFolderId, driveView, handleCreateFolder, handleSyncAndStamp, queryClient, uploadTargetLabel]);
 
     const handleCopyItem = useCallback(async (file: TelegramFile) => {
         if (!await ensureProtectedAccess(file, 'copy')) return;
@@ -869,12 +951,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 targetFolderId: file.folderId === undefined ? activeFolderId : file.folderId,
             });
             queryClient.invalidateQueries({ queryKey: ['files'] });
-            await handleSyncFolders();
+            await handleSyncAndStamp();
             toast.success(`Copied "${file.name}".`, { id: toastId });
         } catch (e) {
-            toast.error(`Copy failed: ${e}`, { id: toastId });
+            toast.error(`Copy failed: ${friendlyDriveError(e)}`, { id: toastId });
         }
-    }, [activeFolderId, ensureProtectedAccess, handleSyncFolders, queryClient]);
+    }, [activeFolderId, ensureProtectedAccess, handleSyncAndStamp, queryClient]);
 
     const handleMergeFolder = useCallback(async (file: TelegramFile) => {
         if (file.type !== 'folder') return;
@@ -890,12 +972,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         try {
             await invokeCommand('cmd_toggle_lock', { messageId: file.id, itemType: file.type || 'file', locked: !file.locked });
             queryClient.invalidateQueries({ queryKey: ['files'] });
-            await handleSyncFolders();
+            await handleSyncAndStamp();
             toast.success(file.locked ? 'Unlocked item.' : 'Locked item.');
         } catch (e) {
-            toast.error(`Lock update failed: ${e}`);
+            toast.error(`Lock update failed: ${friendlyDriveError(e)}`);
         }
-    }, [ensureProtectedAccess, handleSyncFolders, queryClient]);
+    }, [ensureProtectedAccess, handleSyncAndStamp, queryClient]);
 
     const handleToggleProtection = useCallback(async (file: TelegramFile) => {
         if (file.protected) {
@@ -908,10 +990,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     return next;
                 });
                 queryClient.invalidateQueries({ queryKey: ['files'] });
-                await handleSyncFolders();
+                await handleSyncAndStamp();
                 toast.success('Protection removed.');
             } catch (e) {
-                toast.error(`Protection update failed: ${e}`);
+                toast.error(`Protection update failed: ${friendlyDriveError(e)}`);
             }
             return;
         }
@@ -937,24 +1019,24 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 return next;
             });
             queryClient.invalidateQueries({ queryKey: ['files'] });
-            await handleSyncFolders();
+            await handleSyncAndStamp();
             toast.success('Protection enabled.');
         } catch (e) {
-            toast.error(`Protection update failed: ${e}`);
+            toast.error(`Protection update failed: ${friendlyDriveError(e)}`);
         }
-    }, [ensureProtectedAccess, handleSyncFolders, queryClient]);
+    }, [ensureProtectedAccess, handleSyncAndStamp, queryClient]);
 
     const handleFolderColor = useCallback(async (file: TelegramFile, color: string) => {
         if (file.type !== 'folder') return;
         try {
             await invokeCommand('cmd_set_folder_color', { folderId: file.id, color });
             queryClient.invalidateQueries({ queryKey: ['files'] });
-            await handleSyncFolders();
+            await handleSyncAndStamp();
             toast.success('Folder color updated.');
         } catch (e) {
-            toast.error(`Color update failed: ${e}`);
+            toast.error(`Color update failed: ${friendlyDriveError(e)}`);
         }
-    }, [handleSyncFolders, queryClient]);
+    }, [handleSyncAndStamp, queryClient]);
 
     const handleShowVersions = useCallback(async (file: TelegramFile) => {
         if (file.type === 'folder') return;
@@ -963,15 +1045,15 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             const lines = versions.map((item) => `v${item.version || 1} - ${item.created_at || item.name}`).join('\n');
             window.alert(lines || 'No version history yet.');
         } catch (e) {
-            toast.error(`Version history failed: ${e}`);
+            toast.error(`Version history failed: ${friendlyDriveError(e)}`);
         }
     }, []);
 
     const handleDataChanged = useCallback(() => {
         queryClient.invalidateQueries({ queryKey: ['files'] });
         queryClient.invalidateQueries({ queryKey: ['bandwidth'] });
-        handleSyncFolders();
-    }, [handleSyncFolders, queryClient]);
+        void handleSyncAndStamp();
+    }, [handleSyncAndStamp, queryClient]);
 
     const handleAddAccount = useCallback(async () => {
         await invokeCommand('cmd_prepare_add_account').catch(() => undefined);
@@ -987,7 +1069,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         try {
             await restoreItems([file]);
         } catch (e) {
-            toast.error(`Restore failed: ${e}`);
+            toast.error(`Restore failed: ${friendlyDriveError(e)}`);
         }
     }, [restoreItems]);
 
@@ -997,6 +1079,18 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         await restoreItems(selectedItems);
         setSelectedIds([]);
     }, [displayedFiles, restoreItems, selectedIds]);
+
+    const handleStartMoveItem = useCallback((file: TelegramFile) => {
+        if (driveView !== 'files' || file.trashed) return;
+        setSelectedIds([file.id]);
+        setMoveConflictStrategy('keep_both');
+        setShowMoveModal(true);
+    }, [driveView]);
+
+    const showSearchPaths = searchTerm.length > 2 && searchScope === 'drive';
+    const getDisplayedItemPath = useCallback((file: TelegramFile) => {
+        return showSearchPaths ? getItemLocationLabel(file, folders) : undefined;
+    }, [folders, showSearchPaths]);
 
     return (
         <div
@@ -1080,12 +1174,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     void (async () => {
                         if (folder && !await ensureProtectedAccess(folderToExplorerItem(folder), 'delete')) return;
                         await handleFolderDelete(id, name);
+                        await handleSyncAndStamp();
                     })();
                 }}
                 onCreate={handleCreateFolder}
                 isSyncing={isSyncing}
                 isConnected={isConnected}
-                onSync={handleSyncFolders}
+                onSync={handleSyncAndStamp}
                 onLogout={handleLogout}
                 bandwidth={bandwidth || null}
                 connectionLabel={isDesktopRuntime ? undefined : savedMessagesDefault ? 'Telegram Saved Messages' : 'Browser storage ready'}
@@ -1117,6 +1212,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onOpenTools={() => setShowTools(true)}
                     onRepairDrive={savedMessagesDefault ? handleRepairDrive : undefined}
                     isRepairing={isRepairingDrive}
+                    uploadTargetLabel={uploadTargetLabel}
+                    syncStatusText={syncStatusText}
                 />
                 {searchTerm.length > 2 && (
                     <div className="px-6 pt-4 pb-0">
@@ -1153,9 +1250,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onSetFolderColor={handleFolderColor}
                     onShowVersions={handleShowVersions}
                     onCopy={handleCopyItem}
+                    onMove={handleStartMoveItem}
                     onMergeFolder={handleMergeFolder}
                     onToggleLock={handleToggleLock}
                     onToggleProtection={handleToggleProtection}
+                    getItemPath={getDisplayedItemPath}
+                    highlightedId={highlightedId}
+                    uploadTargetLabel={uploadTargetLabel}
                 />
             </main>
 
@@ -1179,6 +1280,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 onClearFinished={() => setUploadQueue(q => q.filter(i => i.status !== 'success' && i.status !== 'error' && i.status !== 'cancelled'))}
                 onCancelAll={cancelUploads}
                 onRetryFailed={retryFailedUploads}
+                onRetryItem={retryUploadItem}
+                onRemoveItem={removeUploadItem}
             />
             <DownloadQueue
                 items={downloadQueue}
@@ -1268,6 +1371,27 @@ function getFolderPath(folderId: number, folders: TelegramFolder[]): string {
     }
 
     return names.join(' / ');
+}
+
+function getReadableFolderPath(folderId: number | null, folders: TelegramFolder[]): string {
+    if (folderId === null) return 'Saved Messages';
+    const path = getFolderPath(folderId, folders);
+    return path ? `Saved Messages / ${path}` : 'Saved Messages';
+}
+
+function getItemLocationLabel(item: TelegramFile, folders: TelegramFolder[]): string {
+    const parentId = item.type === 'folder' ? item.folderId ?? null : item.folderId ?? null;
+    return getReadableFolderPath(parentId, folders);
+}
+
+function formatRelativeSyncTime(date: Date): string {
+    const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+    if (seconds < 10) return 'just now';
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ago`;
 }
 
 function mergeFolders(folders: TelegramFolder[]): TelegramFolder[] {

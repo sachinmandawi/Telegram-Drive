@@ -7,6 +7,29 @@ export function formatBytes(bytes: number, decimals = 2) {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
+export function friendlyDriveError(error: unknown): string {
+    const raw = error instanceof Error ? error.message : String(error || '');
+    const message = raw.replace(/^Error:\s*/i, '').trim();
+
+    if (!message) return 'Something went wrong. Please try again.';
+    if (/file metadata not found/i.test(message)) {
+        return 'File record is missing from the Drive index. Run Repair Index, then try again.';
+    }
+    if (/folder metadata not found|target folder metadata not found/i.test(message)) {
+        return 'Target folder is missing or out of sync. Sync or Repair Index, then try again.';
+    }
+    if (/invalid pin|wrong pin|pin mismatch|incorrect pin/i.test(message)) {
+        return 'Wrong PIN. The item was not unlocked.';
+    }
+    if (/cannot use \[object file\] as file/i.test(message)) {
+        return 'Browser upload payload was rejected. Retry this file once.';
+    }
+    if (/flood|rate limit/i.test(message)) {
+        return message;
+    }
+    return message;
+}
+
 // File type classification.
 import type { TelegramFile } from './types';
 

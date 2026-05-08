@@ -5,9 +5,11 @@ interface UploadQueueProps {
     onClearFinished: () => void;
     onCancelAll: () => void;
     onRetryFailed: () => void;
+    onRetryItem?: (id: string) => void;
+    onRemoveItem?: (id: string) => void;
 }
 
-export function UploadQueue({ items, onClearFinished, onCancelAll, onRetryFailed }: UploadQueueProps) {
+export function UploadQueue({ items, onClearFinished, onCancelAll, onRetryFailed, onRetryItem, onRemoveItem }: UploadQueueProps) {
     if (items.length === 0) return null;
 
     const hasPendingOrActive = items.some(i => i.status === 'pending' || i.status === 'uploading');
@@ -45,6 +47,11 @@ export function UploadQueue({ items, onClearFinished, onCancelAll, onRetryFailed
                             {item.status === 'error' && <div className="text-xs text-red-400">Error</div>}
                             {item.status === 'cancelled' && <div className="text-xs text-gray-400">Cancelled</div>}
                         </div>
+                        {item.targetLabel && (
+                            <div className="pl-5 text-[11px] text-telegram-subtext/80 truncate" title={item.targetLabel}>
+                                To: {item.targetLabel}
+                            </div>
+                        )}
                         {item.status === 'uploading' && (
                             <div className="w-full bg-telegram-border h-1 mt-1 rounded-full overflow-hidden">
                                 {item.progress !== undefined ? (
@@ -62,6 +69,18 @@ export function UploadQueue({ items, onClearFinished, onCancelAll, onRetryFailed
                                 {item.error}
                             </div>
                         )}
+                        <div className="pl-5 flex items-center gap-3 text-[11px]">
+                            {(item.status === 'error' || item.status === 'cancelled') && onRetryItem && (
+                                <button onClick={() => onRetryItem(item.id)} className="text-telegram-primary hover:text-telegram-text">
+                                    Retry
+                                </button>
+                            )}
+                            {(item.status === 'error' || item.status === 'cancelled' || item.status === 'success') && onRemoveItem && (
+                                <button onClick={() => onRemoveItem(item.id)} className="text-telegram-subtext hover:text-telegram-text">
+                                    Remove
+                                </button>
+                            )}
+                        </div>
                     </div>
                 ))}
             </div>

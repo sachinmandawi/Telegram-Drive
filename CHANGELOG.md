@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.17] - 2026-05-08
+
+### Stable Drive Flow Pack
+
+- Strengthened delete/trash refresh so file and folder deletes sync immediately and do not reappear after manual sync.
+- Added visible upload target labels in the toolbar, empty folder state, upload tile, and upload queue.
+- Improved Create Folder from the current folder with clearer target feedback.
+- Replaced the flat Move dialog with a searchable folder tree that blocks selected folder descendants.
+- Added Drive-wide search folder matches, result paths, and open-location behavior for file results.
+- Added clearer sync status text, a safer restore flow with Repair Index action, per-file upload retry/remove controls, and a more consistent context-menu order.
+
 ## [1.1.16] - 2026-05-08
 
 ### Rollback To 1.1.14 Flow

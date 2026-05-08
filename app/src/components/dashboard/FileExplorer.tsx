@@ -37,9 +37,13 @@ interface FileExplorerProps {
     onSetFolderColor?: (file: TelegramFile, color: string) => void;
     onShowVersions?: (file: TelegramFile) => void;
     onCopy?: (file: TelegramFile) => void;
+    onMove?: (file: TelegramFile) => void;
     onMergeFolder?: (file: TelegramFile) => void;
     onToggleLock?: (file: TelegramFile) => void;
     onToggleProtection?: (file: TelegramFile) => void;
+    getItemPath?: (file: TelegramFile) => string | undefined;
+    highlightedId?: number | null;
+    uploadTargetLabel?: string;
 }
 
 
@@ -71,7 +75,7 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
 
 export function FileExplorer({
     files, loading, error, viewMode, selectedIds, activeFolderId,
-    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMergeFolder, onToggleLock, onToggleProtection
+    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMove, onMergeFolder, onToggleLock, onToggleProtection, getItemPath, highlightedId, uploadTargetLabel
 }: FileExplorerProps) {
     const [sortField, setSortField] = useState<SortField>('name');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -188,7 +192,7 @@ export function FileExplorer({
         }
         return (
             <div className="flex-1 p-6 overflow-auto">
-                <EmptyState onUpload={onManualUpload} onUploadFolder={onManualFolderUpload} onCreateFolder={onCreateFolder} />
+                <EmptyState onUpload={onManualUpload} onUploadFolder={onManualFolderUpload} onCreateFolder={onCreateFolder} targetLabel={uploadTargetLabel} />
             </div>
         );
     }
@@ -275,6 +279,11 @@ export function FileExplorer({
                                                             Create Folder
                                                         </button>
                                                     )}
+                                                    {uploadTargetLabel && (
+                                                        <div className="max-w-full truncate text-[10px] text-telegram-subtext/70" title={uploadTargetLabel}>
+                                                            To: {uploadTargetLabel}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             );
                                         }
@@ -295,6 +304,8 @@ export function FileExplorer({
                                                 activeFolderId={activeFolderId}
                                                 height={cardHeight}
                                                 onToggleSelection={() => onToggleSelection(file.id)}
+                                                pathLabel={getItemPath?.(file)}
+                                                highlighted={highlightedId === file.id}
                                             />
                                         );
                                     })}
@@ -381,6 +392,8 @@ export function FileExplorer({
                                         onPreview={handlePreviewRequest}
                                         onDownload={onDownload}
                                         onDelete={onDelete}
+                                        pathLabel={getItemPath?.(file)}
+                                        highlighted={highlightedId === file.id}
                                     />
                                 </div>
                             );
@@ -433,6 +446,10 @@ export function FileExplorer({
                     } : undefined}
                     onCopy={onCopy ? () => {
                         onCopy(contextMenu.file);
+                        setContextMenu(null);
+                    } : undefined}
+                    onMove={onMove && !contextMenu.file.trashed ? () => {
+                        onMove(contextMenu.file);
                         setContextMenu(null);
                     } : undefined}
                     onMergeFolder={onMergeFolder ? () => {

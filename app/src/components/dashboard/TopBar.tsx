@@ -26,13 +26,15 @@ interface TopBarProps {
     savedMessagesOnly?: boolean;
     onRepairDrive?: () => void;
     isRepairing?: boolean;
+    uploadTargetLabel?: string;
+    syncStatusText?: string;
 }
 
 export function TopBar({
     currentFolderName, selectedIds, onShowMoveModal, onBulkDownload, onBulkDelete,
     onDownloadFolder, onBulkTag, onOpenTools, viewMode, setViewMode, searchTerm, onSearchChange, savedMessagesOnly = false,
     onRepairDrive, isRepairing = false, onSelectAll, onClearSelection, allSelected, selectableCount, breadcrumbs, onBulkRestore,
-    searchScope, onSearchScopeChange, onCreateFolder
+    searchScope, onSearchScopeChange, onCreateFolder, uploadTargetLabel, syncStatusText
 }: TopBarProps) {
     const { theme, toggleTheme } = useTheme();
 
@@ -56,7 +58,7 @@ export function TopBar({
             </div>
 
             <div className="flex-1 max-w-xl mx-4 flex items-center gap-2">
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                     <input
                         type="text"
                         placeholder="Search files..."
@@ -64,6 +66,12 @@ export function TopBar({
                         value={searchTerm}
                         onChange={(e) => onSearchChange(e.target.value)}
                     />
+                    {(uploadTargetLabel || syncStatusText) && (
+                        <div className="mt-1 hidden items-center justify-between gap-3 text-[10px] leading-none text-telegram-subtext lg:flex">
+                            <span className="truncate">{uploadTargetLabel ? `To: ${uploadTargetLabel}` : ''}</span>
+                            <span className="shrink-0">{syncStatusText}</span>
+                        </div>
+                    )}
                 </div>
                 <div className="flex rounded-md border border-telegram-border bg-telegram-hover p-0.5 text-[11px]">
                     <button onClick={() => onSearchScopeChange('current')} className={`rounded px-2 py-1 ${searchScope === 'current' ? 'bg-telegram-primary text-black' : 'text-telegram-subtext'}`}>Here</button>
@@ -83,10 +91,9 @@ export function TopBar({
             <div className="flex items-center gap-2">
                 {selectedIds.length > 0 && (
                     <div className="flex items-center gap-2 mr-4 animate-in fade-in slide-in-from-top-2">
-                        <span className="text-xs text-telegram-subtext mr-2">{selectedIds.length} Selected</span>
-                        {allSelected ? (
-                            <button onClick={onClearSelection} className="px-3 py-1.5 bg-telegram-hover hover:bg-telegram-border rounded-md text-xs text-telegram-text transition inline-flex items-center gap-1"><X className="w-3 h-3" /> Clear</button>
-                        ) : selectableCount > selectedIds.length && (
+                        <span className="text-xs text-telegram-subtext mr-1">{selectedIds.length} selected</span>
+                        <button onClick={onClearSelection} className="px-3 py-1.5 bg-telegram-hover hover:bg-telegram-border rounded-md text-xs text-telegram-text transition inline-flex items-center gap-1"><X className="w-3 h-3" /> Clear</button>
+                        {!allSelected && selectableCount > selectedIds.length && (
                             <button onClick={onSelectAll} className="px-3 py-1.5 bg-telegram-hover hover:bg-telegram-border rounded-md text-xs text-telegram-text transition inline-flex items-center gap-1"><CheckSquare className="w-3 h-3" /> Select All</button>
                         )}
                         {!savedMessagesOnly && <button onClick={onShowMoveModal} className="px-3 py-1.5 bg-telegram-primary/20 hover:bg-telegram-primary/30 text-telegram-primary rounded-md text-xs transition font-medium">Move to...</button>}

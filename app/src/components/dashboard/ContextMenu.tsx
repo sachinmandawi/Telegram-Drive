@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Copy, Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, RotateCcw, Tag, Shield, ShieldCheck, ShieldOff, History, Lock, UnlockKeyhole, Combine } from 'lucide-react';
+import { Copy, Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, RotateCcw, Tag, Shield, ShieldCheck, ShieldOff, History, Lock, UnlockKeyhole, Combine, FolderInput } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { isMediaFile, isPdfFile } from '../../utils';
 
@@ -18,12 +18,13 @@ interface ContextMenuProps {
     onSetFolderColor?: (color: string) => void;
     onShowVersions?: () => void;
     onCopy?: () => void;
+    onMove?: () => void;
     onMergeFolder?: () => void;
     onToggleLock?: () => void;
     onToggleProtection?: () => void;
 }
 
-export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onRestore, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMergeFolder, onToggleLock, onToggleProtection }: ContextMenuProps) {
+export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onRestore, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMove, onMergeFolder, onToggleLock, onToggleProtection }: ContextMenuProps) {
     const [adjustedPos, setAdjustedPos] = useState({ x, y });
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -72,6 +73,13 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
                 {file.name}
             </div>
 
+            {file.trashed && onRestore && (
+                <button onClick={onRestore} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
+                    <RotateCcw className="w-4 h-4 text-green-400" />
+                    Restore
+                </button>
+            )}
+
             {file.type !== 'folder' && (
                 <button onClick={onPreview} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
                     {isMediaFile(file) ? (
@@ -104,6 +112,18 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
                 <button onClick={onDownload} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
                     <HardDrive className="w-4 h-4 text-green-500" />
                     Download
+                </button>
+            )}
+
+            <button onClick={onRename} disabled={!onRename || file.trashed} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full disabled:cursor-not-allowed disabled:opacity-50">
+                <Pencil className="w-4 h-4" />
+                Rename
+            </button>
+
+            {onMove && !file.trashed && (
+                <button onClick={onMove} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
+                    <FolderInput className="w-4 h-4 text-telegram-primary" />
+                    Move to...
                 </button>
             )}
 
@@ -156,11 +176,6 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
                 </button>
             )}
 
-            <button onClick={onRename} disabled={!onRename || file.trashed} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full disabled:cursor-not-allowed disabled:opacity-50">
-                <Pencil className="w-4 h-4" />
-                Rename
-            </button>
-
             {file.type === 'folder' && onSetFolderColor && !file.trashed && (
                 <div className="flex items-center gap-1 px-2 py-1">
                     {['#facc15', '#38bdf8', '#4ade80', '#f472b6', '#a78bfa', '#fb7185'].map((color) => (
@@ -176,13 +191,6 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
             )}
 
             <div className="h-px bg-telegram-border my-1" />
-
-            {file.trashed && onRestore && (
-                <button onClick={onRestore} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
-                    <RotateCcw className="w-4 h-4 text-green-400" />
-                    Restore
-                </button>
-            )}
 
             <button onClick={onDelete} className="flex items-center gap-2 px-2 py-1.5 text-sm text-red-500 hover:bg-red-500/10 rounded transition-colors text-left w-full">
                 <Trash2 className="w-4 h-4" />

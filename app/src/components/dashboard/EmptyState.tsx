@@ -4,9 +4,10 @@ interface EmptyStateProps {
     onUpload: () => void;
     onUploadFolder?: () => void;
     onCreateFolder?: () => void;
+    targetLabel?: string;
 }
 
-export function EmptyState({ onUpload, onUploadFolder, onCreateFolder }: EmptyStateProps) {
+export function EmptyState({ onUpload, onUploadFolder, onCreateFolder, targetLabel }: EmptyStateProps) {
     return (
         <div className="flex flex-col items-center justify-center py-20 px-8 text-center">
             {/* Custom SVG Illustration */}
@@ -54,7 +55,7 @@ export function EmptyState({ onUpload, onUploadFolder, onCreateFolder }: EmptySt
                 This folder is empty
             </h3>
             <p className="text-telegram-subtext text-sm mb-6 max-w-xs">
-                Drag and drop files here, or click the button below to upload from your computer.
+                Drag and drop files here, or upload to {targetLabel || 'this folder'}.
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-3">

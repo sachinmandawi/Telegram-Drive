@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "1.1.16"
+version = "1.1.17"
 description = "Telegram Drive browser and desktop storage app owned by Sachin Mandavi."
 authors = ["Sachin Mandavi <197530811+sachinmandawi@users.noreply.github.com>"]
 license = "MIT"

@@ -20,9 +20,11 @@ interface FileCardProps {
     activeFolderId?: number | null;
     height?: number;
     onToggleSelection?: () => void;
+    pathLabel?: string;
+    highlighted?: boolean;
 }
 
-export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, onClick, onContextMenu, onDrop, onDragStart, onDragEnd, activeFolderId, height, onToggleSelection }: FileCardProps) {
+export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, onClick, onContextMenu, onDrop, onDragStart, onDragEnd, activeFolderId, height, onToggleSelection, pathLabel, highlighted }: FileCardProps) {
     const isFolder = file.type === 'folder';
     const [isDragOver, setIsDragOver] = useState(false);
     const [thumbnail, setThumbnail] = useState<string | null>(null);
@@ -105,7 +107,7 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
                 }}
                 whileHover={{ y: -4 }}
                 className={`group cursor-pointer bg-telegram-surface rounded-xl overflow-hidden border hover:shadow-[0_4px_20px_rgba(0,0,0,0.2)] transition-all relative
-                ${isSelected ? 'border-telegram-primary bg-telegram-primary/5 ring-1 ring-telegram-primary' : 'border-telegram-border hover:border-telegram-primary/50'}
+                ${isSelected || highlighted ? 'border-telegram-primary bg-telegram-primary/5 ring-1 ring-telegram-primary' : 'border-telegram-border hover:border-telegram-primary/50'}
                 ${isDragOver ? 'ring-2 ring-telegram-primary bg-telegram-primary/20 scale-105' : ''}`}
                 style={height ? { height: `${height}px` } : { aspectRatio: '4/3' }}
             >
@@ -171,6 +173,11 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
                 <div className={`absolute bottom-0 left-0 right-0 p-3 ${thumbnail ? 'text-white' : 'text-telegram-text'}`}>
                     <h3 className="text-sm font-medium truncate w-full" title={file.name}>{file.name}</h3>
                     <p className={`text-xs mt-0.5 ${thumbnail ? 'text-white/70' : 'text-telegram-subtext'}`}>{file.sizeStr}</p>
+                    {pathLabel && (
+                        <p className={`text-[11px] mt-0.5 truncate ${thumbnail ? 'text-white/70' : 'text-telegram-subtext/80'}`} title={pathLabel}>
+                            {pathLabel}
+                        </p>
+                    )}
                     {!isFolder && file.tags && file.tags.length > 0 && (
                         <div className="mt-1 flex max-h-5 gap-1 overflow-hidden">
                             {file.tags.slice(0, 3).map((tag) => (

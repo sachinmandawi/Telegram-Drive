@@ -73,6 +73,7 @@ export interface QueueItem {
     path: string;
     file?: File;
     folderId: number | null;
+    targetLabel?: string;
     status: 'pending' | 'uploading' | 'success' | 'error' | 'cancelled';
     error?: string;
     progress?: number; // 0-100
