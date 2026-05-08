@@ -507,22 +507,6 @@ export async function telegramGetTrashFiles(query?: string, folderId?: number | 
     });
 }
 
-export async function telegramGetRecentItems(query?: string): Promise<TelegramFile[]> {
-    const manifest = await getDriveManifest();
-    const normalizedQuery = normalizeSearchText(query || '');
-    const folders = manifest.folders
-        .filter((folder) => !isFolderOrAncestorTrashed(folder, manifest.folders))
-        .map((folder) => folderToExplorerFile(folder, manifest));
-    const files = Object.values(manifest.files)
-        .filter((record) => !record.trashed && !record.missing && !isFileInsideTrashedFolder(record, manifest))
-        .map(recordToTelegramFile);
-
-    return [...folders, ...files]
-        .filter((item) => !normalizedQuery || normalizeSearchText([item.name, item.tags?.join(' ')].filter(Boolean).join(' ')).includes(normalizedQuery))
-        .sort(sortTelegramItemsByUpdatedAt)
-        .slice(0, 120);
-}
-
 export async function telegramDeleteFile(messageId: number): Promise<boolean> {
     const manifest = await getDriveManifest();
     const key = String(messageId);
@@ -3218,12 +3202,6 @@ function moveFolderToParentWithConflict(
     return true;
 }
 
-function sortTelegramItemsByUpdatedAt(a: TelegramFile, b: TelegramFile): number {
-    const bTime = new Date(b.deletedAt || b.created_at || 0).getTime();
-    const aTime = new Date(a.deletedAt || a.created_at || 0).getTime();
-    return bTime - aTime;
-}
-
 function formatActivityEventName(event: DriveEvent): string {
     const payload = event.payload || {};
     const name = String(payload.name || payload.fileName || payload.folderName || payload.messageId || payload.folderId || 'Drive item');
@@ -3317,7 +3295,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.1.13-web',
+        appVersion: '1.1.14-web',
     });
 
     await client.connect();
@@ -3402,25 +3380,6 @@ function recordToTelegramFile(record: DriveFileRecord): TelegramFile {
         ocrIndexedAt: record.ocrIndexedAt,
         checksumVerifiedAt: record.checksumVerifiedAt,
         integrityStatus: record.integrityStatus || 'unknown',
-    };
-}
-
-function folderToExplorerFile(folder: TelegramFolder, manifest: DriveManifest): TelegramFile {
-    const stats = getFolderStats(folder.id, manifest);
-    return {
-        id: folder.id,
-        name: folder.name,
-        size: stats.size,
-        sizeStr: stats.itemCount > 0 ? `${stats.itemCount} item${stats.itemCount === 1 ? '' : 's'}` : 'Folder',
-        created_at: folder.updatedAt ? new Date(folder.updatedAt).toLocaleString() : '',
-        type: 'folder',
-        folderId: folder.parent_id ?? null,
-        color: folder.color,
-        locked: folder.locked || false,
-        protected: folder.protected || false,
-        protectionHint: folder.protectionHint,
-        trashed: folder.trashed || false,
-        deletedAt: folder.deletedAt,
     };
 }
 

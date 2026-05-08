@@ -25,7 +25,6 @@ import {
     telegramGetRecoveryItems,
     telegramGetOfflineCacheStats,
     telegramGetObjectUrl,
-    telegramGetRecentItems,
     telegramGetStorageHealth,
     telegramGetTrashFiles,
     telegramExportManifest,
@@ -204,7 +203,6 @@ async function invokeTauriCommand<T>(invoke: TauriInvokeFn, command: string, arg
         }
         case 'cmd_get_trash_files':
             return getLegacyTrashFiles(String(args.query || '')) as T;
-        case 'cmd_get_recent_items':
         case 'cmd_get_activity_items':
         case 'cmd_get_cleanup_suggestions':
         case 'cmd_get_file_versions':
@@ -506,8 +504,6 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
             return [] as T;
         case 'cmd_get_files':
             return await getWebFiles((args.folderId as number | null | undefined) ?? null) as T;
-        case 'cmd_get_recent_items':
-            return await searchWebFiles(String(args.query || '')) as T;
         case 'cmd_delete_file':
             await trashWebFile(Number(args.messageId));
             return true as T;
@@ -612,8 +608,6 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
             return readBandwidth() as T;
         case 'cmd_get_files':
             return await telegramGetFiles((args.folderId as number | null | undefined) ?? null) as T;
-        case 'cmd_get_recent_items':
-            return await telegramGetRecentItems(String(args.query || '')) as T;
         case 'cmd_get_trash_files':
             return await telegramGetTrashFiles(String(args.query || ''), typeof args.folderId === 'number' ? args.folderId : null) as T;
         case 'cmd_search_global':

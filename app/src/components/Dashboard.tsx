@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { TelegramFile, BandwidthStats, TelegramFolder, DriveView } from '../types';
-import { formatBytes, isImageFile, isMediaFile, isPdfFile } from '../utils';
+import { formatBytes, isMediaFile, isPdfFile } from '../utils';
 
 // Components
 import { Sidebar } from './dashboard/Sidebar';
@@ -94,9 +94,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         queryFn: () => {
             const command = driveView === 'trash'
                 ? 'cmd_get_trash_files'
-                : driveView === 'recent'
-                    ? 'cmd_get_recent_items'
-                    : 'cmd_get_files';
+                : 'cmd_get_files';
             const args = driveView === 'files'
                 ? { folderId: activeFolderId }
                 : driveView === 'trash'
@@ -106,11 +104,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             ...f,
             sizeStr: f.sizeStr || formatBytes(f.size),
             type: f.icon_type || f.type || (f.name.endsWith('/') ? 'folder' : 'file')
-            }))).then((files) => {
-                if (driveView === 'gallery') return files.filter(isImageFile);
-                if (driveView === 'media') return files.filter(isMediaFile);
-                return files;
-            });
+            })));
         },
         enabled: !!store,
     });
@@ -129,11 +123,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const baseDisplayedFiles = searchTerm.length > 2
         ? searchResults
         : currentFolderItems.filter((f: TelegramFile) => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    const displayedFiles = baseDisplayedFiles.filter((file) => {
-        if (driveView === 'gallery') return isImageFile(file);
-        if (driveView === 'media') return isMediaFile(file);
-        return true;
-    });
+    const displayedFiles = baseDisplayedFiles;
 
     const displayedFileItems = useMemo(() => {
         return displayedFiles.filter((f) => f.type !== 'folder');
@@ -409,10 +399,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             setIsSearching(true);
             if (searchScope === 'current') {
                 setSearchResults(currentFolderItems.filter((file) => file.name.toLowerCase().includes(searchTerm.toLowerCase())));
-            } else if (driveView === 'trash' || driveView === 'recent') {
-                const command = driveView === 'trash'
-                    ? 'cmd_get_trash_files'
-                    : 'cmd_get_recent_items';
+            } else if (driveView === 'trash') {
+                const command = 'cmd_get_trash_files';
                 const results = await invokeCommand<any[]>(command, { query: searchTerm, folderId: driveView === 'trash' ? activeTrashFolderId : undefined });
                 setSearchResults(results.map((file) => ({
                     ...file,
@@ -614,13 +602,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         }
     }
 
-    const currentFolderName = driveView === 'recent'
-            ? "Recent"
-        : driveView === 'gallery'
-            ? "Gallery"
-            : driveView === 'media'
-                ? "Media"
-        : driveView === 'trash'
+    const currentFolderName = driveView === 'trash'
             ? trashBreadcrumbs.length > 0 ? `Trash / ${trashBreadcrumbs.map((item) => item.name).join(' / ')}` : "Trash"
             : activeFolderId === null
                 ? "Saved Messages"

@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.14] - 2026-05-08
+
+### Removed Gallery Recent Media Views
+
+- Removed Gallery, Recent, and Media from the sidebar.
+- Removed Gallery, Recent, and Media drive-view routing and filtering from the dashboard.
+- Removed the active Recent command helper now that the Recent view is gone.
+- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.14.
+
 ## [1.1.13] - 2026-05-08
 
 ### Removed Pin And Star

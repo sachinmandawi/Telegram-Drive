@@ -28,7 +28,7 @@ export interface TelegramFile {
     integrityStatus?: 'unknown' | 'valid' | 'mismatch';
 }
 
-export type DriveView = 'files' | 'trash' | 'gallery' | 'media' | 'recent';
+export type DriveView = 'files' | 'trash';
 
 export interface TelegramFolder {
     id: number;
