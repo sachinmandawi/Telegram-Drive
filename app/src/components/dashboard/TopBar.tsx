@@ -38,13 +38,16 @@ export function TopBar({
 }: TopBarProps) {
     const { theme, toggleTheme } = useTheme();
     const visibleBreadcrumbs = breadcrumbs && breadcrumbs.length > 0 ? breadcrumbs : [{ label: 'Start' }, { label: currentFolderName }];
+    const actionCount = 4 + (onCreateFolder ? 1 : 0) + (onRepairDrive ? 1 : 0);
+    const iconButtonClass = "group relative flex h-11 min-w-0 items-center justify-center rounded-xl border border-telegram-border bg-telegram-hover/70 text-telegram-subtext transition active:scale-[0.98] hover:border-telegram-primary/40 hover:text-telegram-text md:h-auto md:rounded-md md:border-0 md:bg-transparent md:p-2";
+    const tooltipClass = "pointer-events-none absolute -bottom-8 left-1/2 z-50 hidden -translate-x-1/2 whitespace-nowrap rounded border border-telegram-border bg-telegram-surface px-2 py-1 text-[10px] opacity-0 shadow-lg transition-opacity group-hover:opacity-100 md:block";
 
     return (
         <header
-            className="sticky top-0 z-20 border-b border-telegram-border bg-telegram-surface/90 px-3 pb-2 pt-[calc(0.5rem+env(safe-area-inset-top))] backdrop-blur-md md:h-14 md:px-4 md:py-0"
+            className="sticky top-0 z-20 border-b border-telegram-border bg-telegram-surface/95 px-4 pb-3 pt-[calc(0.65rem+env(safe-area-inset-top))] backdrop-blur-md md:h-14 md:px-4 md:py-0"
             onClick={e => e.stopPropagation()}
         >
-            <div className="flex h-full min-h-12 w-full flex-col gap-2 md:min-h-0 md:flex-row md:items-center md:justify-between">
+            <div className="flex h-full min-h-12 w-full flex-col gap-3 md:min-h-0 md:flex-row md:items-center md:justify-between md:gap-2">
                 <div className="flex min-w-0 items-center gap-2">
                     <button
                         type="button"
@@ -72,7 +75,7 @@ export function TopBar({
                     </div>
                 </div>
 
-                <div className="flex min-w-0 flex-1 items-center gap-2 md:max-w-3xl md:px-4">
+                <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 md:flex md:max-w-3xl md:px-4">
                     <div className="min-w-0 flex-1">
                         <input
                             type="text"
@@ -105,9 +108,12 @@ export function TopBar({
                     ))}
                 </div>
 
-                <div className="flex min-w-0 shrink-0 items-center justify-end gap-1 overflow-x-auto pb-1 md:gap-2 md:overflow-visible md:pb-0">
+                <div
+                    className="grid w-full min-w-0 shrink-0 gap-2 md:flex md:w-auto md:items-center md:justify-end md:gap-2"
+                    style={{ gridTemplateColumns: `repeat(${actionCount}, minmax(0, 1fr))` }}
+                >
                     {selectedIds.length > 0 && (
-                        <div className="flex shrink-0 items-center gap-1 animate-in fade-in slide-in-from-top-2 md:mr-3 md:gap-2">
+                        <div className="col-span-full flex min-w-0 shrink-0 items-center gap-1 overflow-x-auto animate-in fade-in slide-in-from-top-2 md:col-span-auto md:mr-3 md:gap-2 md:overflow-visible">
                             <span className="mr-1 shrink-0 text-xs text-telegram-subtext">{selectedIds.length} selected</span>
                             <button onClick={onClearSelection} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-telegram-hover px-2 py-1.5 text-xs text-telegram-text transition hover:bg-telegram-border md:px-3"><X className="h-3 w-3" /><span className="hidden sm:inline">Clear</span></button>
                             {!allSelected && selectableCount > selectedIds.length && (
@@ -121,17 +127,17 @@ export function TopBar({
                         </div>
                     )}
 
-                    <button onClick={onDownloadFolder} className="group relative shrink-0 rounded-md p-2 text-telegram-subtext transition hover:bg-telegram-hover hover:text-telegram-text" title="Download Folder">
+                    <button onClick={onDownloadFolder} className={iconButtonClass} title="Download Folder">
                         <HardDrive className="h-5 w-5" />
-                        <span className="pointer-events-none absolute -bottom-8 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded border border-telegram-border bg-telegram-surface px-2 py-1 text-[10px] opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                        <span className={tooltipClass}>
                             Download All Files
                         </span>
                     </button>
 
                     {onCreateFolder && (
-                        <button onClick={onCreateFolder} className="group relative shrink-0 rounded-md p-2 text-telegram-subtext transition hover:bg-telegram-hover hover:text-telegram-text" title="Create Folder">
+                        <button onClick={onCreateFolder} className={iconButtonClass} title="Create Folder">
                             <FolderPlus className="h-5 w-5" />
-                            <span className="pointer-events-none absolute -bottom-8 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded border border-telegram-border bg-telegram-surface px-2 py-1 text-[10px] opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                            <span className={tooltipClass}>
                                 Create Folder
                             </span>
                         </button>
@@ -141,11 +147,11 @@ export function TopBar({
                         <button
                             onClick={onRepairDrive}
                             disabled={isRepairing}
-                            className={`group relative shrink-0 rounded-md p-2 text-telegram-subtext transition hover:bg-telegram-hover hover:text-telegram-text ${isRepairing ? 'cursor-wait opacity-60' : ''}`}
+                            className={`${iconButtonClass} ${isRepairing ? 'cursor-wait opacity-60' : ''}`}
                             title="Repair Telegram Index"
                         >
                             <Wrench className={`h-5 w-5 ${isRepairing ? 'animate-pulse text-telegram-primary' : ''}`} />
-                            <span className="pointer-events-none absolute -bottom-8 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded border border-telegram-border bg-telegram-surface px-2 py-1 text-[10px] opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                            <span className={tooltipClass}>
                                 Repair Index
                             </span>
                         </button>
@@ -153,36 +159,34 @@ export function TopBar({
 
                     <button
                         onClick={onOpenTools}
-                        className="group relative shrink-0 rounded-md p-2 text-telegram-subtext transition hover:bg-telegram-hover hover:text-telegram-text"
+                        className={iconButtonClass}
                         title="Drive Tools"
                     >
                         <SlidersHorizontal className="h-5 w-5" />
-                        <span className="pointer-events-none absolute -bottom-8 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded border border-telegram-border bg-telegram-surface px-2 py-1 text-[10px] opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                        <span className={tooltipClass}>
                             Drive Tools
                         </span>
                     </button>
 
                     <button
                         onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-                        className="group relative shrink-0 rounded-md p-2 text-telegram-subtext transition hover:bg-telegram-hover hover:text-telegram-text"
+                        className={iconButtonClass}
                         title="Toggle Layout"
                     >
                         <LayoutGrid className="h-5 w-5" />
-                        <span className="pointer-events-none absolute -bottom-8 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded border border-telegram-border bg-telegram-surface px-2 py-1 text-[10px] opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                        <span className={tooltipClass}>
                             {viewMode === 'grid' ? 'Switch to List' : 'Switch to Grid'}
                         </span>
                     </button>
 
-                    <div className="mx-1 hidden h-6 w-px shrink-0 bg-telegram-border sm:block"></div>
-
                     <button
                         onClick={toggleTheme}
-                        className="group relative shrink-0 rounded-md p-2 text-telegram-subtext transition hover:bg-telegram-hover hover:text-telegram-text"
-                        title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                        className={`${iconButtonClass} ${theme === 'light' ? 'text-telegram-primary' : ''}`}
+                        title={theme === 'dark' ? 'Dark mode on. Tap for light mode' : 'Light mode on. Tap for dark mode'}
                     >
-                        {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-                        <span className="pointer-events-none absolute -bottom-8 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded border border-telegram-border bg-telegram-surface px-2 py-1 text-[10px] opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                            {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+                        {theme === 'dark' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+                        <span className={tooltipClass}>
+                            {theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
                         </span>
                     </button>
                 </div>

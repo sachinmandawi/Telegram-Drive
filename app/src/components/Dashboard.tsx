@@ -1096,6 +1096,101 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         return showSearchPaths ? getItemLocationLabel(file, folders) : undefined;
     }, [folders, showSearchPaths]);
 
+    const handleMobileBack = useCallback(() => {
+        if (tagTarget) {
+            setTagTarget(null);
+            return true;
+        }
+        if (showTools) {
+            setShowTools(false);
+            return true;
+        }
+        if (showMoveModal) {
+            setShowMoveModal(false);
+            setMoveConflictStrategy('keep_both');
+            return true;
+        }
+        if (pdfFile) {
+            setPdfFile(null);
+            return true;
+        }
+        if (playingFile) {
+            setPlayingFile(null);
+            return true;
+        }
+        if (previewFile) {
+            setPreviewFile(null);
+            return true;
+        }
+        if (mobileSidebarOpen) {
+            setMobileSidebarOpen(false);
+            return true;
+        }
+        if (selectedIds.length > 0) {
+            setSelectedIds([]);
+            return true;
+        }
+        if (searchTerm) {
+            setSearchTerm('');
+            setSearchResults([]);
+            return true;
+        }
+        if (driveView === 'trash') {
+            if (activeTrashFolderId !== null) {
+                const nextCrumbs = trashBreadcrumbs.slice(0, -1);
+                setTrashBreadcrumbs(nextCrumbs);
+                setActiveTrashFolderId(nextCrumbs.length > 0 ? nextCrumbs[nextCrumbs.length - 1].id : null);
+            } else {
+                setDriveView('files');
+            }
+            return true;
+        }
+        if (activeFolderId !== null) {
+            const parentId = folders.find((folder) => folder.id === activeFolderId)?.parent_id ?? null;
+            void handleOpenFolderId(parentId);
+            return true;
+        }
+        return false;
+    }, [
+        activeFolderId,
+        activeTrashFolderId,
+        driveView,
+        folders,
+        handleOpenFolderId,
+        mobileSidebarOpen,
+        pdfFile,
+        playingFile,
+        previewFile,
+        searchTerm,
+        selectedIds.length,
+        showMoveModal,
+        showTools,
+        tagTarget,
+        trashBreadcrumbs,
+    ]);
+
+    const mobileBackRef = useRef(handleMobileBack);
+
+    useEffect(() => {
+        mobileBackRef.current = handleMobileBack;
+    }, [handleMobileBack]);
+
+    useEffect(() => {
+        const state = { telegramDrive: true };
+        window.history.replaceState(state, document.title);
+        window.history.pushState(state, document.title);
+
+        const onPopState = () => {
+            const handled = mobileBackRef.current();
+            if (handled) {
+                window.history.pushState(state, document.title);
+            }
+        };
+
+        window.addEventListener('popstate', onPopState);
+        return () => window.removeEventListener('popstate', onPopState);
+    }, []);
+
     return (
         <div
             className="relative flex h-[100dvh] min-h-screen w-full overflow-hidden bg-telegram-bg"
@@ -1255,7 +1350,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onManualUpload={handleManualUpload}
                     onManualFolderUpload={handleManualFolderUpload}
                     onCreateFolder={handleCreateFolderHere}
-                    allowUpload={driveView === 'files'}
+                    allowUpload={driveView === 'files' && searchTerm.length <= 2}
                     onSelectionClear={() => setSelectedIds([])}
                     onToggleSelection={handleToggleSelection}
                     onDrop={handleDropOnFolder}

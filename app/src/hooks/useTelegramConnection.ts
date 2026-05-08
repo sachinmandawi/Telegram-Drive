@@ -67,16 +67,8 @@ export function useTelegramConnection(onLogoutParent: () => void) {
                         }
                         queryClient.invalidateQueries({ queryKey: ['files'] });
                     } catch {
-                        const shouldRetry = window.confirm("Failed to connect to Telegram. Retry?");
-                        if (shouldRetry) {
-                            window.location.reload();
-                        } else {
-                            if (_store) {
-                                await _store.delete('api_id');
-                                await _store.save();
-                            }
-                            onLogoutParent();
-                        }
+                        setIsConnected(false);
+                        toast.error("Telegram connection failed. Your session is still saved; sync again when network is ready.");
                     }
                 } else {
                     onLogoutParent();

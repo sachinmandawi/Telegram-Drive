@@ -253,20 +253,20 @@ export function FileExplorer({
                                             return (
                                                 <div
                                                     key="upload"
-                                                    className="group flex flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border-2 border-dashed border-telegram-border p-2 text-telegram-subtext transition-all hover:border-telegram-primary sm:p-3"
+                                                    className="group flex flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border-2 border-dashed border-telegram-border bg-telegram-hover/25 p-2 text-center text-telegram-subtext transition-all hover:border-telegram-primary sm:p-3"
                                                     style={{ height: `${cardHeight}px` }}
                                                 >
                                                     <Plus className="w-6 h-6 mb-1 shrink-0 group-hover:scale-110 transition-transform" />
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); onManualUpload(); }}
-                                                        className="text-xs font-medium hover:text-telegram-primary sm:text-sm"
+                                                        className="text-xs font-medium leading-tight hover:text-telegram-primary sm:text-sm"
                                                     >
                                                         Upload Files
                                                     </button>
                                                     {onManualFolderUpload && (
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); onManualFolderUpload(); }}
-                                                            className="text-xs font-medium text-telegram-subtext hover:text-telegram-primary"
+                                                            className="text-xs font-medium leading-tight text-telegram-subtext hover:text-telegram-primary"
                                                         >
                                                             Upload Folder
                                                         </button>
@@ -274,7 +274,7 @@ export function FileExplorer({
                                                     {onCreateFolder && (
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); onCreateFolder(); }}
-                                                            className="text-xs font-medium text-telegram-subtext hover:text-telegram-primary"
+                                                            className="text-xs font-medium leading-tight text-telegram-subtext hover:text-telegram-primary"
                                                         >
                                                             Create Folder
                                                         </button>

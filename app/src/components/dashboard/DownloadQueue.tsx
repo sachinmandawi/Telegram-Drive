@@ -16,8 +16,8 @@ export function DownloadQueue({ items, onClearFinished, onCancelAll, onRetryFail
     const failedCount = items.filter(i => i.status === 'error' || i.status === 'cancelled').length;
 
     return (
-        <div className="fixed bottom-4 right-4 w-80 bg-telegram-surface border border-telegram-border rounded-xl shadow-2xl overflow-hidden z-[100]">
-            <div className="p-3 border-b border-telegram-border bg-telegram-hover flex justify-between items-center">
+        <div className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-[100] overflow-hidden rounded-xl border border-telegram-border bg-telegram-surface shadow-2xl sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-80">
+            <div className="flex items-center justify-between gap-3 border-b border-telegram-border bg-telegram-hover p-3">
                 <div className="flex items-center gap-2">
                     <Download className="w-4 h-4 text-telegram-secondary" />
                     <h4 className="text-sm font-medium text-telegram-text">Downloads</h4>
@@ -27,7 +27,7 @@ export function DownloadQueue({ items, onClearFinished, onCancelAll, onRetryFail
                         </span>
                     )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex shrink-0 gap-2">
                     {failedCount > 0 && (
                         <button onClick={onRetryFailed} className="text-xs text-telegram-primary hover:text-telegram-text transition-colors">Retry Failed</button>
                     )}

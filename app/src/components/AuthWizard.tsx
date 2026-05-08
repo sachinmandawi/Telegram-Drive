@@ -1,27 +1,10 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Phone, Key, Lock, ArrowRight, Settings, ShieldCheck, Sun, Moon, HelpCircle, ExternalLink, X, Heart, Timer } from "lucide-react";
-import { useTheme } from '../context/ThemeContext';
+import { Phone, Key, Lock, ArrowRight, Settings, ShieldCheck, HelpCircle, ExternalLink, X, Heart, Timer } from "lucide-react";
 import { getPublicAssetPath, invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime, loadAppStore, openExternal, telegramApiDefaults } from '../platform';
 
 type Step = "setup" | "phone" | "code" | "password";
 
-function AuthThemeToggle() {
-    const { theme, toggleTheme } = useTheme();
-    return (
-        <button
-            onClick={toggleTheme}
-            className="absolute top-4 right-4 p-3 rounded-full bg-white/10 hover:bg-white/20 transition-colors z-10"
-            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-        >
-            {theme === 'dark' ? (
-                <Sun className="w-5 h-5 text-white" />
-            ) : (
-                <Moon className="w-5 h-5 text-white" />
-            )}
-        </button>
-    );
-}
 export function AuthWizard({ onLogin }: { onLogin: () => void }) {
     const defaultCredentials = telegramApiDefaults();
     const logoSrc = getPublicAssetPath('logo.svg');
@@ -216,16 +199,14 @@ export function AuthWizard({ onLogin }: { onLogin: () => void }) {
     };
 
     return (
-        <div className="h-full w-full auth-gradient flex items-center justify-center p-6 relative">
-            <AuthThemeToggle />
-
+        <div className="auth-gradient relative flex min-h-[100dvh] w-full items-center justify-center overflow-y-auto px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))] sm:p-6">
             <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="auth-glass p-8 rounded-3xl shadow-2xl w-full max-w-md"
+                className="auth-glass w-full max-w-md rounded-[1.75rem] p-6 shadow-2xl sm:rounded-3xl sm:p-8"
             >
                 <div className="text-center mb-8">
-                    <div className="w-20 h-20 mb-6 mx-auto flex items-center justify-center filter drop-shadow-lg">
+                    <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center drop-shadow-lg sm:mb-6 sm:h-20 sm:w-20">
                         <img src={logoSrc} alt="Logo" className="w-full h-full" />
                     </div>
                     <h1 className="text-2xl font-bold text-white mb-1 tracking-tight">Telegram Drive</h1>

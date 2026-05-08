@@ -31,12 +31,18 @@ body,
   padding: 0;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
+  overscroll-behavior: none;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   background: var(--color-telegram-bg);
   color: var(--color-telegram-text);
   transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Auth screen gradient background */
@@ -154,6 +160,13 @@ body,
 
 :root.light ::-webkit-scrollbar-thumb:hover {
   background: rgba(36, 129, 204, 0.5);
+}
+
+@media (max-width: 767px) {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
 }
 
 /* Progress Animation */

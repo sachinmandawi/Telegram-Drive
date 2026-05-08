@@ -26,10 +26,18 @@ interface ContextMenuProps {
 
 export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onRestore, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMove, onMergeFolder, onToggleLock, onToggleProtection }: ContextMenuProps) {
     const [adjustedPos, setAdjustedPos] = useState({ x, y });
+    const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
     const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const update = () => setIsMobile(window.innerWidth < 640);
+        window.addEventListener('resize', update);
+        return () => window.removeEventListener('resize', update);
+    }, []);
 
     // Adjust position to stay in bounds
     useEffect(() => {
+        if (isMobile) return;
         if (menuRef.current) {
             const rect = menuRef.current.getBoundingClientRect();
             let newX = x;
@@ -43,7 +51,7 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
             }
             setAdjustedPos({ x: newX, y: newY });
         }
-    }, [x, y]);
+    }, [isMobile, x, y]);
 
     // Close on outside click
     useEffect(() => {
@@ -64,8 +72,8 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
     return (
         <div
             ref={menuRef}
-            className="fixed z-50 min-w-[200px] bg-telegram-surface/95 backdrop-blur-xl border border-telegram-border rounded-lg shadow-2xl p-1.5 animate-in fade-in zoom-in-95 duration-100 flex flex-col gap-0.5"
-            style={{ left: adjustedPos.x, top: adjustedPos.y }}
+            className={`${isMobile ? 'fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-50 max-h-[75dvh] overflow-y-auto rounded-2xl' : 'fixed z-50 min-w-[200px] rounded-lg'} flex flex-col gap-0.5 border border-telegram-border bg-telegram-surface/95 p-1.5 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100`}
+            style={isMobile ? undefined : { left: adjustedPos.x, top: adjustedPos.y }}
             onClick={(e) => e.stopPropagation()}
             onContextMenu={(e) => e.preventDefault()}
         >

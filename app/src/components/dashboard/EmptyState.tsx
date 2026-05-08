@@ -8,10 +8,10 @@ interface EmptyStateProps {
 
 export function EmptyState({ onUpload, onUploadFolder, onCreateFolder }: EmptyStateProps) {
     return (
-        <div className="flex flex-col items-center justify-center py-20 px-8 text-center">
+        <div className="flex min-h-full flex-col items-center justify-center px-4 py-12 text-center sm:px-8 sm:py-20">
             {/* Custom SVG Illustration */}
             <svg
-                className="w-48 h-48 mb-8"
+                className="mb-6 h-32 w-32 sm:mb-8 sm:h-48 sm:w-48"
                 viewBox="0 0 200 200"
                 fill="none"
             >
@@ -50,17 +50,17 @@ export function EmptyState({ onUpload, onUploadFolder, onCreateFolder }: EmptySt
                 </g>
             </svg>
 
-            <h3 className="text-xl font-semibold text-telegram-text mb-2">
+            <h3 className="mb-2 text-lg font-semibold text-telegram-text sm:text-xl">
                 This folder is empty
             </h3>
-            <p className="text-telegram-subtext text-sm mb-6 max-w-xs">
+            <p className="mb-6 max-w-xs text-sm text-telegram-subtext">
                 Drag and drop files here, or upload from your computer.
             </p>
 
-            <div className="flex flex-wrap items-center justify-center gap-3">
+            <div className="grid w-full max-w-xs grid-cols-1 gap-2 sm:max-w-none sm:grid-cols-3 sm:gap-3">
                 <button
                     onClick={onUpload}
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-telegram-primary text-black font-medium rounded-xl hover:bg-telegram-primary/90 transition-all hover:scale-105 shadow-lg shadow-telegram-primary/20"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-telegram-primary px-5 py-3 font-medium text-black shadow-lg shadow-telegram-primary/20 transition-all hover:bg-telegram-primary/90 active:scale-[0.98]"
                 >
                     <Upload className="w-5 h-5" />
                     Upload Files
@@ -68,7 +68,7 @@ export function EmptyState({ onUpload, onUploadFolder, onCreateFolder }: EmptySt
                 {onUploadFolder && (
                     <button
                         onClick={onUploadFolder}
-                        className="inline-flex items-center gap-2 px-6 py-3 bg-telegram-hover text-telegram-text border border-telegram-border font-medium rounded-xl hover:border-telegram-primary hover:text-telegram-primary transition-all"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-telegram-border bg-telegram-hover px-5 py-3 font-medium text-telegram-text transition-all hover:border-telegram-primary hover:text-telegram-primary active:scale-[0.98]"
                     >
                         <Upload className="w-5 h-5" />
                         Upload Folder
@@ -77,7 +77,7 @@ export function EmptyState({ onUpload, onUploadFolder, onCreateFolder }: EmptySt
                 {onCreateFolder && (
                     <button
                         onClick={onCreateFolder}
-                        className="inline-flex items-center gap-2 px-6 py-3 bg-telegram-hover text-telegram-text border border-telegram-border font-medium rounded-xl hover:border-telegram-primary hover:text-telegram-primary transition-all"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-telegram-border bg-telegram-hover px-5 py-3 font-medium text-telegram-text transition-all hover:border-telegram-primary hover:text-telegram-primary active:scale-[0.98]"
                     >
                         <FolderPlus className="w-5 h-5" />
                         Create Folder
@@ -85,7 +85,7 @@ export function EmptyState({ onUpload, onUploadFolder, onCreateFolder }: EmptySt
                 )}
             </div>
 
-            <p className="text-xs text-telegram-subtext/50 mt-6">
+            <p className="mt-6 hidden text-xs text-telegram-subtext/50 sm:block">
                 Tip: Use <kbd className="px-1.5 py-0.5 bg-telegram-hover rounded text-telegram-subtext">Cmd + F</kbd> to search
             </p>
         </div>
