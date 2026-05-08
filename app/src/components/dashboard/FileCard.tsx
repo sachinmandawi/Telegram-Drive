@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Folder, Eye, Trash2, Shield, ShieldAlert, ShieldCheck, Lock } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { FileTypeIcon } from '../FileTypeIcon';
@@ -14,6 +14,7 @@ interface FileCardProps {
     isSelected: boolean;
     onClick?: (e: React.MouseEvent) => void;
     onContextMenu?: (e: React.MouseEvent) => void;
+    onOpenContextMenu?: (x: number, y: number) => void;
     onDrop?: (e: React.DragEvent, folderId: number) => void;
     onDragStart?: (fileId: number) => void;
     onDragEnd?: () => void;
@@ -24,15 +25,25 @@ interface FileCardProps {
     highlighted?: boolean;
 }
 
-export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, onClick, onContextMenu, onDrop, onDragStart, onDragEnd, activeFolderId, height, onToggleSelection, pathLabel, highlighted }: FileCardProps) {
+export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, onClick, onContextMenu, onOpenContextMenu, onDrop, onDragStart, onDragEnd, activeFolderId, height, onToggleSelection, pathLabel, highlighted }: FileCardProps) {
     const isFolder = file.type === 'folder';
     const folderColor = file.color || '#ffae00';
     const [isDragOver, setIsDragOver] = useState(false);
     const [thumbnail, setThumbnail] = useState<string | null>(null);
     const [thumbnailLoading, setThumbnailLoading] = useState(false);
+    const longPressTimerRef = useRef<number | null>(null);
+    const longPressStartRef = useRef<{ x: number; y: number } | null>(null);
+    const longPressTriggeredRef = useRef(false);
     const cardStyle = {
-        ...(height ? { height: `${height}px` } : { aspectRatio: '4/3' }),
+        ...(height ? { height: `${height}px` } : { aspectRatio: '1 / 1' }),
     } as React.CSSProperties;
+
+    const clearLongPressTimer = () => {
+        if (longPressTimerRef.current !== null) {
+            window.clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+        }
+    };
 
     // Lazy load thumbnail for image files
     useEffect(() => {
@@ -70,11 +81,46 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
         };
     }, [file.id, file.name, activeFolderId, isFolder]);
 
+    useEffect(() => clearLongPressTimer, []);
+
     return (
         <div
             className="relative"
             onContextMenu={onContextMenu}
-            onClick={onClick}
+            onClick={(event) => {
+                if (longPressTriggeredRef.current) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    longPressTriggeredRef.current = false;
+                    return;
+                }
+                onClick?.(event);
+            }}
+            onTouchStart={(event) => {
+                if (!onOpenContextMenu) return;
+                const touch = event.touches[0];
+                if (!touch) return;
+                longPressStartRef.current = { x: touch.clientX, y: touch.clientY };
+                longPressTriggeredRef.current = false;
+                clearLongPressTimer();
+                longPressTimerRef.current = window.setTimeout(() => {
+                    const point = longPressStartRef.current;
+                    if (!point) return;
+                    longPressTriggeredRef.current = true;
+                    onOpenContextMenu(point.x, point.y);
+                    navigator.vibrate?.(15);
+                }, 450);
+            }}
+            onTouchMove={(event) => {
+                const start = longPressStartRef.current;
+                const touch = event.touches[0];
+                if (!start || !touch) return;
+                if (Math.abs(touch.clientX - start.x) > 10 || Math.abs(touch.clientY - start.y) > 10) {
+                    clearLongPressTimer();
+                }
+            }}
+            onTouchEnd={clearLongPressTimer}
+            onTouchCancel={clearLongPressTimer}
             onDragOver={(e) => {
                 if (isFolder) {
                     e.preventDefault();
@@ -201,7 +247,7 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
                 </div>
 
                 {/* Quick actions on hover */}
-                <div className="absolute top-2 right-2 z-10 flex gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                <div className="absolute top-2 right-2 z-10 hidden gap-1 transition-opacity sm:flex sm:opacity-0 sm:group-hover:opacity-100">
                     <button onClick={(e) => { e.stopPropagation(); if (onPreview) onPreview() }} className="file-action-btn p-1 bg-black/50 rounded-full hover:bg-telegram-primary hover:text-white text-white/70" title="Preview">
                         <Eye className="w-3 h-3" />
                     </button>

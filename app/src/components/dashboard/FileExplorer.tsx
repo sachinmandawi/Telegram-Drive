@@ -86,7 +86,7 @@ export function FileExplorer({
 
     const GAP = containerWidth < 640 ? 8 : 6;
     const cardWidth = (containerWidth - (GAP * (columns - 1))) / columns;
-    const cardHeight = Math.max(cardWidth * 0.75, containerWidth < 640 ? 150 : 140);
+    const cardHeight = cardWidth;
     const rowHeight = Math.max(cardHeight + GAP, 150);
 
     const handleContextMenu = useCallback((e: React.MouseEvent, file: TelegramFile) => {
@@ -290,6 +290,7 @@ export function FileExplorer({
                                                 isSelected={selectedIds.includes(file.id)}
                                                 onClick={(e) => onFileClick(e, file.id)}
                                                 onContextMenu={(e) => handleContextMenu(e, file)}
+                                                onOpenContextMenu={(x, y) => setContextMenu({ x, y, file })}
                                                 onDelete={() => onDelete(file.id)}
                                                 onDownload={() => onDownload(file.id, file.name)}
                                                 onPreview={() => handlePreviewRequest(file)}

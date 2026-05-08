@@ -53,19 +53,43 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
         }
     }, [isMobile, x, y]);
 
-    // Close on outside click
+    // Close on outside pointer/back without letting the app navigate underneath.
     useEffect(() => {
-        const handleClick = () => onClose();
+        const handlePointerDown = (event: PointerEvent) => {
+            const target = event.target as Node | null;
+            if (target && menuRef.current?.contains(target)) return;
+            onClose();
+        };
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                onClose();
+            }
+        };
+        const handlePopState = (event: PopStateEvent) => {
+            event.stopImmediatePropagation();
+            onClose();
+            window.history.pushState(window.history.state ?? { telegramDrive: true }, document.title);
+        };
+        const handleContextMenu = (event: MouseEvent) => {
+            const target = event.target as Node | null;
+            if (target && menuRef.current?.contains(target)) return;
+            onClose();
+        };
         const handleResize = () => onClose();
 
-        window.addEventListener('click', handleClick);
+        window.addEventListener('pointerdown', handlePointerDown, true);
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('popstate', handlePopState, true);
         window.addEventListener('resize', handleResize);
-        window.addEventListener('contextmenu', handleClick); // Close if right click elsewhere
+        window.addEventListener('contextmenu', handleContextMenu, true);
 
         return () => {
-            window.removeEventListener('click', handleClick);
+            window.removeEventListener('pointerdown', handlePointerDown, true);
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('popstate', handlePopState, true);
             window.removeEventListener('resize', handleResize);
-            window.removeEventListener('contextmenu', handleClick);
+            window.removeEventListener('contextmenu', handleContextMenu, true);
         };
     }, [onClose]);
 
