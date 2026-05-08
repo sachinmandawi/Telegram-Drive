@@ -21,11 +21,12 @@ interface FileCardProps {
     activeFolderId?: number | null;
     height?: number;
     onToggleSelection?: () => void;
+    showSelectionControl?: boolean;
     pathLabel?: string;
     highlighted?: boolean;
 }
 
-export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, onClick, onContextMenu, onOpenContextMenu, onDrop, onDragStart, onDragEnd, activeFolderId, height, onToggleSelection, pathLabel, highlighted }: FileCardProps) {
+export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, onClick, onContextMenu, onOpenContextMenu, onDrop, onDragStart, onDragEnd, activeFolderId, height, onToggleSelection, showSelectionControl = false, pathLabel, highlighted }: FileCardProps) {
     const isFolder = file.type === 'folder';
     const folderColor = file.color || '#ffae00';
     const [isDragOver, setIsDragOver] = useState(false);
@@ -192,15 +193,17 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
                 )}
 
                 {/* Selection Checkmark */}
-                <div
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        if (onToggleSelection) onToggleSelection();
-                    }}
-                    className={`absolute top-2 left-2 z-10 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border transition-all ${isSelected ? 'bg-telegram-primary border-telegram-primary' : 'border-white/50 bg-black/30 opacity-100 sm:opacity-0 sm:group-hover:opacity-100'}`}
-                >
-                    {isSelected && <div className="w-1.5 h-1.5 bg-black rounded-full" />}
-                </div>
+                {(showSelectionControl || isSelected) && (
+                    <div
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (onToggleSelection) onToggleSelection();
+                        }}
+                        className={`absolute top-2 left-2 z-10 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border transition-all ${isSelected ? 'bg-telegram-primary border-telegram-primary' : 'border-white/60 bg-black/30'}`}
+                    >
+                        {isSelected && <div className="w-1.5 h-1.5 bg-black rounded-full" />}
+                    </div>
+                )}
 
                 {file.locked && (
                     <div className="absolute top-2 left-9 w-5 h-5 rounded-full bg-black/40 flex items-center justify-center z-10">

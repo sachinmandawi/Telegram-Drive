@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { HardDrive, Folder, Plus, RefreshCw, LogOut, Trash2, X } from 'lucide-react';
+import { ChevronDown, Folder, HardDrive, LogOut, Moon, Plus, RefreshCw, Settings, SlidersHorizontal, Sun, Trash2, Wrench, X } from 'lucide-react';
 import { SidebarItem } from './SidebarItem';
 import { BandwidthWidget } from './BandwidthWidget';
 import { getPublicAssetPath } from '../../platform';
 import { TelegramFolder, BandwidthStats, DriveView } from '../../types';
+import { useTheme } from '../../context/ThemeContext';
 
 interface SidebarProps {
     folders: TelegramFolder[];
@@ -16,6 +17,9 @@ interface SidebarProps {
     isConnected: boolean;
     onSync: () => void;
     onLogout: () => void;
+    onOpenTools: () => void;
+    onRepairDrive?: () => void;
+    isRepairing?: boolean;
     bandwidth: BandwidthStats | null;
     connectionLabel?: string;
     savedMessagesOnly?: boolean;
@@ -27,12 +31,14 @@ interface SidebarProps {
 
 export function Sidebar({
     folders, activeFolderId, setActiveFolderId, onDrop, onDelete, onCreate,
-    isSyncing, isConnected, onSync, onLogout, bandwidth, connectionLabel, savedMessagesOnly = false,
+    isSyncing, isConnected, onSync, onLogout, onOpenTools, onRepairDrive, isRepairing = false, bandwidth, connectionLabel, savedMessagesOnly = false,
     activeDriveView = 'files', onDriveViewChange, mobileOpen = false, onMobileClose
 }: SidebarProps) {
+    const { theme, toggleTheme } = useTheme();
     const logoSrc = getPublicAssetPath('logo.svg');
     const [showNewFolderInput, setShowNewFolderInput] = useState(false);
     const [newFolderName, setNewFolderName] = useState("");
+    const [settingsOpen, setSettingsOpen] = useState(false);
 
     const submitCreate = async () => {
         if (!newFolderName.trim()) return;
@@ -133,6 +139,54 @@ export function Sidebar({
                     </button>
                 )}
             </div>}
+
+            <div className="border-t border-telegram-border px-2 py-2">
+                <button
+                    type="button"
+                    onClick={() => setSettingsOpen((open) => !open)}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-telegram-subtext transition hover:bg-telegram-hover hover:text-telegram-text"
+                    aria-expanded={settingsOpen}
+                >
+                    <Settings className="h-4 w-4" />
+                    <span className="flex-1 text-left">Settings</span>
+                    <ChevronDown className={`h-4 w-4 transition-transform ${settingsOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {settingsOpen && (
+                    <div className="mt-1 space-y-1 rounded-lg bg-telegram-hover/35 p-1">
+                        {onRepairDrive && (
+                            <button
+                                type="button"
+                                onClick={onRepairDrive}
+                                disabled={isRepairing}
+                                className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-telegram-subtext transition hover:bg-telegram-hover hover:text-telegram-text ${isRepairing ? 'cursor-wait opacity-60' : ''}`}
+                            >
+                                <Wrench className={`h-4 w-4 ${isRepairing ? 'animate-pulse text-telegram-primary' : ''}`} />
+                                <span>{isRepairing ? 'Repairing Index...' : 'Repair Index'}</span>
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                onOpenTools();
+                                onMobileClose?.();
+                            }}
+                            className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-telegram-subtext transition hover:bg-telegram-hover hover:text-telegram-text"
+                        >
+                            <SlidersHorizontal className="h-4 w-4" />
+                            <span>Drive Tools</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={toggleTheme}
+                            className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-telegram-subtext transition hover:bg-telegram-hover hover:text-telegram-text"
+                        >
+                            {theme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4 text-telegram-primary" />}
+                            <span>{theme === 'dark' ? 'Dark Mode' : 'Light Mode'}</span>
+                        </button>
+                    </div>
+                )}
+            </div>
 
             <div className="border-t border-telegram-border px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 md:pb-4">
                 <div className="flex items-center gap-2 text-telegram-subtext text-xs">

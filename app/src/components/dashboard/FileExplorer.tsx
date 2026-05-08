@@ -91,6 +91,7 @@ export function FileExplorer({
 
     const parentRef = useRef<HTMLDivElement>(null);
     const { columns, containerWidth } = useGridColumns(parentRef);
+    const selectionMode = selectedIds.length > 0;
 
     const GAP = containerWidth < 640 ? 12 : 6;
     const cardWidth = (containerWidth - (GAP * (columns - 1))) / columns;
@@ -306,6 +307,7 @@ export function FileExplorer({
                                                 activeFolderId={activeFolderId}
                                                 height={cardHeight}
                                                 onToggleSelection={() => onToggleSelection(file.id)}
+                                                showSelectionControl={selectionMode}
                                                 pathLabel={getItemPath?.(file)}
                                                 highlighted={highlightedId === file.id}
                                             />
@@ -410,6 +412,12 @@ export function FileExplorer({
                     y={contextMenu.y}
                     file={contextMenu.file}
                     onClose={() => setContextMenu(null)}
+                    onSelect={() => {
+                        if (!selectedIds.includes(contextMenu.file.id)) {
+                            onToggleSelection(contextMenu.file.id);
+                        }
+                        setContextMenu(null);
+                    }}
                     onDownload={() => {
                         onDownload(contextMenu.file.id, contextMenu.file.name);
                         setContextMenu(null);

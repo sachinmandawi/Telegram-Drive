@@ -1,5 +1,4 @@
-import { CheckSquare, FolderPlus, HardDrive, LayoutGrid, Menu, Moon, SlidersHorizontal, Sun, Tag, Wrench, X } from 'lucide-react';
-import { useTheme } from '../../context/ThemeContext';
+import { CheckSquare, Menu, Tag, X } from 'lucide-react';
 
 interface TopBarProps {
     currentFolderName: string;
@@ -10,37 +9,26 @@ interface TopBarProps {
     allSelected: boolean;
     selectableCount: number;
     onShowMoveModal: () => void;
-    onCreateFolder?: () => void;
     onBulkDownload: () => void;
     onBulkDelete: () => void;
     onBulkRestore?: () => void;
-    onDownloadFolder: () => void;
     onBulkTag: () => void;
-    onOpenTools: () => void;
-    viewMode: 'grid' | 'list';
-    setViewMode: (mode: 'grid' | 'list') => void;
     searchTerm: string;
     onSearchChange: (term: string) => void;
     searchScope: 'current' | 'drive';
     onSearchScopeChange: (scope: 'current' | 'drive') => void;
     savedMessagesOnly?: boolean;
-    onRepairDrive?: () => void;
-    isRepairing?: boolean;
     syncStatusText?: string;
     onOpenSidebar?: () => void;
 }
 
 export function TopBar({
     currentFolderName, selectedIds, onShowMoveModal, onBulkDownload, onBulkDelete,
-    onDownloadFolder, onBulkTag, onOpenTools, viewMode, setViewMode, searchTerm, onSearchChange, savedMessagesOnly = false,
-    onRepairDrive, isRepairing = false, onSelectAll, onClearSelection, allSelected, selectableCount, breadcrumbs, onBulkRestore,
-    searchScope, onSearchScopeChange, onCreateFolder, syncStatusText, onOpenSidebar
+    onBulkTag, searchTerm, onSearchChange, savedMessagesOnly = false,
+    onSelectAll, onClearSelection, allSelected, selectableCount, breadcrumbs, onBulkRestore,
+    searchScope, onSearchScopeChange, syncStatusText, onOpenSidebar
 }: TopBarProps) {
-    const { theme, toggleTheme } = useTheme();
     const visibleBreadcrumbs = breadcrumbs && breadcrumbs.length > 0 ? breadcrumbs : [{ label: 'Start' }, { label: currentFolderName }];
-    const actionCount = 4 + (onCreateFolder ? 1 : 0) + (onRepairDrive ? 1 : 0);
-    const iconButtonClass = "group relative flex h-11 min-w-0 items-center justify-center rounded-xl border border-telegram-border bg-telegram-hover/70 text-telegram-subtext transition active:scale-[0.98] hover:border-telegram-primary/40 hover:text-telegram-text md:h-auto md:rounded-md md:border-0 md:bg-transparent md:p-2";
-    const tooltipClass = "pointer-events-none absolute -bottom-8 left-1/2 z-50 hidden -translate-x-1/2 whitespace-nowrap rounded border border-telegram-border bg-telegram-surface px-2 py-1 text-[10px] opacity-0 shadow-lg transition-opacity group-hover:opacity-100 md:block";
 
     return (
         <header
@@ -108,88 +96,20 @@ export function TopBar({
                     ))}
                 </div>
 
-                <div
-                    className="grid w-full min-w-0 shrink-0 gap-2 md:flex md:w-auto md:items-center md:justify-end md:gap-2"
-                    style={{ gridTemplateColumns: `repeat(${actionCount}, minmax(0, 1fr))` }}
-                >
-                    {selectedIds.length > 0 && (
-                        <div className="col-span-full flex min-w-0 shrink-0 items-center gap-1 overflow-x-auto animate-in fade-in slide-in-from-top-2 md:col-span-auto md:mr-3 md:gap-2 md:overflow-visible">
-                            <span className="mr-1 shrink-0 text-xs text-telegram-subtext">{selectedIds.length} selected</span>
-                            <button onClick={onClearSelection} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-telegram-hover px-2 py-1.5 text-xs text-telegram-text transition hover:bg-telegram-border md:px-3"><X className="h-3 w-3" /><span className="hidden sm:inline">Clear</span></button>
-                            {!allSelected && selectableCount > selectedIds.length && (
-                                <button onClick={onSelectAll} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-telegram-hover px-2 py-1.5 text-xs text-telegram-text transition hover:bg-telegram-border md:px-3"><CheckSquare className="h-3 w-3" /> Select All</button>
-                            )}
-                            {!savedMessagesOnly && <button onClick={onShowMoveModal} className="whitespace-nowrap rounded-md bg-telegram-primary/20 px-2 py-1.5 text-xs font-medium text-telegram-primary transition hover:bg-telegram-primary/30 md:px-3">Move</button>}
-                            {onBulkRestore && <button onClick={onBulkRestore} className="whitespace-nowrap rounded-md bg-green-500/10 px-2 py-1.5 text-xs text-green-400 transition hover:bg-green-500/20 md:px-3">Restore</button>}
-                            <button onClick={onBulkTag} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-telegram-hover px-2 py-1.5 text-xs text-telegram-text transition hover:bg-telegram-border md:px-3"><Tag className="h-3 w-3" /><span className="hidden sm:inline">Tags</span></button>
-                            <button onClick={onBulkDownload} className="whitespace-nowrap rounded-md bg-telegram-hover px-2 py-1.5 text-xs text-telegram-text transition hover:bg-telegram-border md:px-3">Download</button>
-                            <button onClick={onBulkDelete} className="whitespace-nowrap rounded-md bg-red-500/10 px-2 py-1.5 text-xs text-red-400 transition hover:bg-red-500/20 md:px-3">Delete</button>
-                        </div>
-                    )}
-
-                    <button onClick={onDownloadFolder} className={iconButtonClass} title="Download Folder">
-                        <HardDrive className="h-5 w-5" />
-                        <span className={tooltipClass}>
-                            Download All Files
-                        </span>
-                    </button>
-
-                    {onCreateFolder && (
-                        <button onClick={onCreateFolder} className={iconButtonClass} title="Create Folder">
-                            <FolderPlus className="h-5 w-5" />
-                            <span className={tooltipClass}>
-                                Create Folder
-                            </span>
-                        </button>
-                    )}
-
-                    {onRepairDrive && (
-                        <button
-                            onClick={onRepairDrive}
-                            disabled={isRepairing}
-                            className={`${iconButtonClass} ${isRepairing ? 'cursor-wait opacity-60' : ''}`}
-                            title="Repair Telegram Index"
-                        >
-                            <Wrench className={`h-5 w-5 ${isRepairing ? 'animate-pulse text-telegram-primary' : ''}`} />
-                            <span className={tooltipClass}>
-                                Repair Index
-                            </span>
-                        </button>
-                    )}
-
-                    <button
-                        onClick={onOpenTools}
-                        className={iconButtonClass}
-                        title="Drive Tools"
-                    >
-                        <SlidersHorizontal className="h-5 w-5" />
-                        <span className={tooltipClass}>
-                            Drive Tools
-                        </span>
-                    </button>
-
-                    <button
-                        onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-                        className={iconButtonClass}
-                        title="Toggle Layout"
-                    >
-                        <LayoutGrid className="h-5 w-5" />
-                        <span className={tooltipClass}>
-                            {viewMode === 'grid' ? 'Switch to List' : 'Switch to Grid'}
-                        </span>
-                    </button>
-
-                    <button
-                        onClick={toggleTheme}
-                        className={`${iconButtonClass} ${theme === 'light' ? 'text-telegram-primary' : ''}`}
-                        title={theme === 'dark' ? 'Dark mode on. Tap for light mode' : 'Light mode on. Tap for dark mode'}
-                    >
-                        {theme === 'dark' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-                        <span className={tooltipClass}>
-                            {theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
-                        </span>
-                    </button>
-                </div>
+                {selectedIds.length > 0 && (
+                    <div className="flex min-w-0 shrink-0 items-center gap-1 overflow-x-auto animate-in fade-in slide-in-from-top-2 md:mr-3 md:gap-2 md:overflow-visible">
+                        <span className="mr-1 shrink-0 text-xs text-telegram-subtext">{selectedIds.length} selected</span>
+                        <button onClick={onClearSelection} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-telegram-hover px-2 py-1.5 text-xs text-telegram-text transition hover:bg-telegram-border md:px-3"><X className="h-3 w-3" /><span className="hidden sm:inline">Clear</span></button>
+                        {!allSelected && selectableCount > selectedIds.length && (
+                            <button onClick={onSelectAll} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-telegram-hover px-2 py-1.5 text-xs text-telegram-text transition hover:bg-telegram-border md:px-3"><CheckSquare className="h-3 w-3" /> Select All</button>
+                        )}
+                        {!savedMessagesOnly && <button onClick={onShowMoveModal} className="whitespace-nowrap rounded-md bg-telegram-primary/20 px-2 py-1.5 text-xs font-medium text-telegram-primary transition hover:bg-telegram-primary/30 md:px-3">Move</button>}
+                        {onBulkRestore && <button onClick={onBulkRestore} className="whitespace-nowrap rounded-md bg-green-500/10 px-2 py-1.5 text-xs text-green-400 transition hover:bg-green-500/20 md:px-3">Restore</button>}
+                        <button onClick={onBulkTag} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-telegram-hover px-2 py-1.5 text-xs text-telegram-text transition hover:bg-telegram-border md:px-3"><Tag className="h-3 w-3" /><span className="hidden sm:inline">Tags</span></button>
+                        <button onClick={onBulkDownload} className="whitespace-nowrap rounded-md bg-telegram-hover px-2 py-1.5 text-xs text-telegram-text transition hover:bg-telegram-border md:px-3">Download</button>
+                        <button onClick={onBulkDelete} className="whitespace-nowrap rounded-md bg-red-500/10 px-2 py-1.5 text-xs text-red-400 transition hover:bg-red-500/20 md:px-3">Delete</button>
+                    </div>
+                )}
             </div>
         </header>
     )

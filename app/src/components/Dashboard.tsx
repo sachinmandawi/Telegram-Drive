@@ -48,7 +48,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
 
     const [previewFile, setPreviewFile] = useState<TelegramFile | null>(null);
-    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [driveView, setDriveView] = useState<DriveView>('files');
     const [activeTrashFolderId, setActiveTrashFolderId] = useState<number | null>(null);
     const [trashBreadcrumbs, setTrashBreadcrumbs] = useState<{ id: number; name: string }[]>([]);
@@ -78,20 +77,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const [highlightedId, setHighlightedId] = useState<number | null>(null);
     const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
     const [createMenuOpen, setCreateMenuOpen] = useState(false);
-
-    useEffect(() => {
-        if (store) {
-            store.get<'grid' | 'list'>('viewMode').then((saved) => {
-                if (saved) setViewMode(saved);
-            });
-        }
-    }, [store]);
-
-    useEffect(() => {
-        if (store) {
-            store.set('viewMode', viewMode).then(() => store.save());
-        }
-    }, [store, viewMode]);
 
     useEffect(() => {
         if (driveView !== 'files' && createMenuOpen) {
@@ -154,7 +139,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     const {
         handleDelete, handleBulkDelete, handleBulkDownload,
-        handleDownloadFolder, handleGlobalSearch
+        handleGlobalSearch
 
     } = useFileOperations(activeFolderId, selectedIds, setSelectedIds, displayedFileItems);
 
@@ -491,7 +476,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const handleFileClick = async (e: React.MouseEvent, id: number) => {
         e.stopPropagation();
         const clicked = displayedFiles.find(f => f.id === id);
-        if (e.metaKey || e.ctrlKey) {
+        if (e.metaKey || e.ctrlKey || selectedIds.length > 0) {
             setSelectedIds(ids => ids.includes(id) ? ids.filter(i => i !== id) : [...ids, id]);
             return;
         }
@@ -516,13 +501,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 setSearchTerm("");
                 setSearchResults([]);
                 window.setTimeout(() => {
-                    setSelectedIds([id]);
                     setHighlightedId(id);
                 }, 0);
                 toast.info(`Opened location: ${getItemLocationLabel(clicked, folders)}`);
                 return;
             }
-            setSelectedIds([id]);
+            handlePreview(clicked, displayedFiles);
         }
     }
 
@@ -844,7 +828,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             void ensureProtectedAccess(item, 'open').then((ok) => {
                 if (!ok) return;
                 void setActiveFolderId(id);
-                toast.info("Opened folder. Use Download All Files for its contents.");
+                toast.info("Opened folder.");
             });
             return;
         }
@@ -1306,6 +1290,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 isConnected={isConnected}
                 onSync={handleSyncAndStamp}
                 onLogout={handleLogout}
+                onOpenTools={() => setShowTools(true)}
+                onRepairDrive={savedMessagesDefault ? handleRepairDrive : undefined}
+                isRepairing={isRepairingDrive}
                 bandwidth={bandwidth || null}
                 connectionLabel={isDesktopRuntime ? undefined : savedMessagesDefault ? 'Telegram Saved Messages' : 'Browser storage ready'}
                 mobileOpen={mobileSidebarOpen}
@@ -1322,22 +1309,15 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     allSelected={allDisplayedSelected}
                     selectableCount={selectableIds.length}
                     onShowMoveModal={() => { setMoveConflictStrategy('keep_both'); setShowMoveModal(true); }}
-                    onCreateFolder={driveView === 'files' ? handleCreateFolderHere : undefined}
                     onBulkDownload={handleSelectedBulkDownload}
                     onBulkDelete={handleSelectedDelete}
                     onBulkRestore={driveView === 'trash' ? handleSelectedRestore : undefined}
-                    onDownloadFolder={handleDownloadFolder}
-                    viewMode={viewMode}
-                    setViewMode={setViewMode}
                     searchTerm={searchTerm}
                     onSearchChange={setSearchTerm}
                     searchScope={searchScope}
                     onSearchScopeChange={setSearchScope}
                     savedMessagesOnly={driveView !== 'files'}
                     onBulkTag={handleSelectedBulkTag}
-                    onOpenTools={() => setShowTools(true)}
-                    onRepairDrive={savedMessagesDefault ? handleRepairDrive : undefined}
-                    isRepairing={isRepairingDrive}
                     syncStatusText={syncStatusText}
                     onOpenSidebar={() => setMobileSidebarOpen(true)}
                 />
@@ -1353,7 +1333,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     files={displayedFiles}
                     loading={isLoading || isSearching}
                     error={error}
-                    viewMode={viewMode}
+                    viewMode="grid"
                     selectedIds={selectedIds}
                     activeFolderId={activeFolderId}
                     onFileClick={handleFileClick}

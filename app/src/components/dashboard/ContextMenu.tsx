@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Copy, Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, RotateCcw, Tag, Shield, ShieldCheck, ShieldOff, History, Lock, UnlockKeyhole, Combine, FolderInput } from 'lucide-react';
+import { CheckCircle2, Copy, Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, RotateCcw, Tag, Shield, ShieldCheck, ShieldOff, History, Lock, UnlockKeyhole, Combine, FolderInput } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { isMediaFile, isPdfFile } from '../../utils';
 
@@ -12,6 +12,7 @@ interface ContextMenuProps {
     onDelete: () => void;
     onPreview: () => void;
     onRestore?: () => void;
+    onSelect?: () => void;
     onEditTags?: () => void;
     onVerify?: () => void;
     onRename?: () => void;
@@ -24,7 +25,7 @@ interface ContextMenuProps {
     onToggleProtection?: () => void;
 }
 
-export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onRestore, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMove, onMergeFolder, onToggleLock, onToggleProtection }: ContextMenuProps) {
+export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onRestore, onSelect, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMove, onMergeFolder, onToggleLock, onToggleProtection }: ContextMenuProps) {
     const [adjustedPos, setAdjustedPos] = useState({ x, y });
     const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -104,6 +105,13 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
             <div className="px-2 py-1.5 text-xs text-telegram-subtext font-medium truncate max-w-[180px] border-b border-telegram-border mb-1">
                 {file.name}
             </div>
+
+            {onSelect && (
+                <button onClick={onSelect} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
+                    <CheckCircle2 className="w-4 h-4 text-telegram-primary" />
+                    Select
+                </button>
+            )}
 
             {file.trashed && onRestore && (
                 <button onClick={onRestore} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
