@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.12] - 2026-05-08
+
+### Quick Access Tree Fix
+
+- Made Quick Access inherit pinned folder trees, so pinning a folder also shows its child folders and files.
+- Made Starred inherit starred folder trees, so starring a folder also shows its child folders and files.
+- Kept trashed and missing children hidden from inherited Quick Access and Starred results.
+- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.12.
+
 ## [1.1.11] - 2026-05-08
 
 ### Deep Bug Fix Pack

@@ -483,10 +483,20 @@ export async function telegramSearchFiles(query: string): Promise<TelegramFile[]
 
 export async function telegramGetStarredFiles(query?: string): Promise<TelegramFile[]> {
     const manifest = await getDriveManifest();
+    const starredFolderIds = collectFlaggedFolderTreeIds(manifest, 'starred');
     const folders = manifest.folders
-        .filter((folder) => Boolean(folder.starred) && !isFolderOrAncestorTrashed(folder, manifest.folders))
+        .filter((folder) => starredFolderIds.has(folder.id) && !isFolderOrAncestorTrashed(folder, manifest.folders))
         .map((folder) => folderToExplorerFile(folder, manifest));
-    const files = await telegramGetFilesByRecord((record) => Boolean(record.starred) && !record.trashed && !record.missing, query);
+    const filters = parseSmartSearchQuery(query || '');
+    const files = Object.values(manifest.files)
+        .filter((record) => {
+            if (record.trashed || record.missing || isFileInsideTrashedFolder(record, manifest)) return false;
+            const folderId = record.folderId ?? manifest.fileFolders[String(record.messageId)] ?? null;
+            return Boolean(record.starred) || (folderId !== null && starredFolderIds.has(folderId));
+        })
+        .filter((record) => !query || matchesSmartSearch(record, filters))
+        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
+        .map(recordToTelegramFile);
     const normalizedQuery = normalizeSearchText(query || '');
     return [...folders, ...files]
         .filter((item) => !normalizedQuery || normalizeSearchText(item.name).includes(normalizedQuery))
@@ -543,11 +553,16 @@ export async function telegramGetRecentItems(query?: string): Promise<TelegramFi
 export async function telegramGetQuickAccessItems(query?: string): Promise<TelegramFile[]> {
     const manifest = await getDriveManifest();
     const normalizedQuery = normalizeSearchText(query || '');
+    const pinnedFolderIds = collectFlaggedFolderTreeIds(manifest, 'pinned');
     const folders = manifest.folders
-        .filter((folder) => folder.pinned && !isFolderOrAncestorTrashed(folder, manifest.folders))
+        .filter((folder) => pinnedFolderIds.has(folder.id) && !isFolderOrAncestorTrashed(folder, manifest.folders))
         .map((folder) => folderToExplorerFile(folder, manifest));
     const files = Object.values(manifest.files)
-        .filter((record) => record.pinned && !record.trashed && !record.missing && !isFileInsideTrashedFolder(record, manifest))
+        .filter((record) => {
+            if (record.trashed || record.missing || isFileInsideTrashedFolder(record, manifest)) return false;
+            const folderId = record.folderId ?? manifest.fileFolders[String(record.messageId)] ?? null;
+            return Boolean(record.pinned) || (folderId !== null && pinnedFolderIds.has(folderId));
+        })
         .map(recordToTelegramFile);
 
     return [...folders, ...files]
@@ -1546,21 +1561,6 @@ export async function telegramRepairManifest(): Promise<{
         files: Object.keys(manifest.files).length,
         snapshotsKept: MANIFEST_BACKUP_COUNT,
     };
-}
-
-async function telegramGetFilesByRecord(
-    predicate: (record: DriveFileRecord) => boolean,
-    query?: string
-): Promise<TelegramFile[]> {
-    const manifest = await getDriveManifest();
-    const filters = parseSmartSearchQuery(query || '');
-
-    return Object.values(manifest.files)
-        .filter(predicate)
-        .filter((record) => !isFileInsideTrashedFolder(record, manifest))
-        .filter((record) => !query || matchesSmartSearch(record, filters))
-        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
-        .map(recordToTelegramFile);
 }
 
 async function getSavedMessages(client: TelegramClientInstance, query?: string): Promise<TelegramMessage[]> {
@@ -3452,7 +3452,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.1.11-web',
+        appVersion: '1.1.12-web',
     });
 
     await client.connect();
@@ -3604,6 +3604,18 @@ function isFileInsideTrashedFolder(record: DriveFileRecord, manifest: DriveManif
     if (folderId === null) return false;
     const folder = manifest.folders.find((item) => item.id === folderId);
     return Boolean(folder && isFolderOrAncestorTrashed(folder, manifest.folders));
+}
+
+function collectFlaggedFolderTreeIds(manifest: DriveManifest, flag: 'starred' | 'pinned'): Set<number> {
+    const ids = new Set<number>();
+    for (const folder of manifest.folders) {
+        if (!folder[flag] || isFolderOrAncestorTrashed(folder, manifest.folders)) continue;
+        for (const id of collectManifestFolderTreeIds(folder.id, manifest.folders)) {
+            const descendant = manifest.folders.find((item) => item.id === id);
+            if (descendant && !isFolderOrAncestorTrashed(descendant, manifest.folders)) ids.add(id);
+        }
+    }
+    return ids;
 }
 
 function isInsideTrashedFolder(folder: TelegramFolder, folders: TelegramFolder[]): boolean {
