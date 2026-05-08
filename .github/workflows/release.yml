@@ -56,11 +56,6 @@ jobs:
             args: ''
             target: ''
             
-          # macOS Intel
-          - platform: macos-13
-            args: '--target x86_64-apple-darwin'
-            target: 'x86_64-apple-darwin'
-          
           # macOS Apple Silicon
           - platform: macos-latest
             args: '--target aarch64-apple-darwin'
