@@ -1,13 +1,11 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, ArrowUpDown, ArrowUp, ArrowDown, FolderPlus } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { FileCard } from './FileCard';
 import { EmptyState } from './EmptyState';
 import { TelegramFile } from '../../types';
 import { ContextMenu } from './ContextMenu';
 import { FileListItem } from './FileListItem';
-import { NewMenu } from './NewMenu';
-import { friendlyDriveError } from '../../utils';
 
 type SortField = 'name' | 'size' | 'date';
 type SortDirection = 'asc' | 'desc';
@@ -42,10 +40,6 @@ interface FileExplorerProps {
     onMergeFolder?: (file: TelegramFile) => void;
     onToggleLock?: (file: TelegramFile) => void;
     onToggleProtection?: (file: TelegramFile) => void;
-    onMove?: (file: TelegramFile) => void;
-    getItemPath?: (file: TelegramFile) => string;
-    currentPath?: string;
-    highlightedId?: number | null;
 }
 
 
@@ -77,7 +71,7 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
 
 export function FileExplorer({
     files, loading, error, viewMode, selectedIds, activeFolderId,
-    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMergeFolder, onToggleLock, onToggleProtection, onMove, getItemPath, currentPath, highlightedId
+    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMergeFolder, onToggleLock, onToggleProtection
 }: FileExplorerProps) {
     const [sortField, setSortField] = useState<SortField>('name');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -151,7 +145,7 @@ export function FileExplorer({
     const listVirtualizer = useVirtualizer({
         count: listItems.length,
         getScrollElement: () => parentRef.current,
-        estimateSize: () => getItemPath ? 60 : 48,
+        estimateSize: () => 48,
         overscan: 5,
     });
 
@@ -181,12 +175,7 @@ export function FileExplorer({
     }
 
     if (error) {
-        return (
-            <div className="flex-1 p-6 flex flex-col justify-center items-center gap-3 text-center">
-                <div className="text-red-400">Error loading files</div>
-                <div className="max-w-md text-sm text-telegram-subtext">{friendlyDriveError(error)}</div>
-            </div>
-        );
+        return <div className="flex-1 p-6 flex justify-center items-center text-red-400">Error loading files</div>
     }
 
     if (files.length === 0) {
@@ -199,7 +188,7 @@ export function FileExplorer({
         }
         return (
             <div className="flex-1 p-6 overflow-auto">
-                <EmptyState onUpload={onManualUpload} onUploadFolder={onManualFolderUpload} onCreateFolder={onCreateFolder} currentPath={currentPath} />
+                <EmptyState onUpload={onManualUpload} onUploadFolder={onManualFolderUpload} onCreateFolder={onCreateFolder} />
             </div>
         );
     }
@@ -263,14 +252,29 @@ export function FileExplorer({
                                                     className="border-2 border-dashed border-telegram-border rounded-xl flex flex-col items-center justify-center text-telegram-subtext hover:border-telegram-primary transition-all group p-3 gap-2"
                                                     style={{ height: `${cardHeight}px` }}
                                                 >
-                                                    <NewMenu
-                                                        onUpload={onManualUpload}
-                                                        onUploadFolder={onManualFolderUpload}
-                                                        onCreateFolder={onCreateFolder}
-                                                        targetLabel={currentPath}
-                                                        variant="tile"
-                                                        align="left"
-                                                    />
+                                                    <Plus className="w-8 h-8 mb-2 group-hover:scale-110 transition-transform" />
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); onManualUpload(); }}
+                                                        className="text-sm font-medium hover:text-telegram-primary"
+                                                    >
+                                                        Upload Files
+                                                    </button>
+                                                    {onManualFolderUpload && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); onManualFolderUpload(); }}
+                                                            className="text-xs font-medium text-telegram-subtext hover:text-telegram-primary"
+                                                        >
+                                                            Upload Folder
+                                                        </button>
+                                                    )}
+                                                    {onCreateFolder && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); onCreateFolder(); }}
+                                                            className="text-xs font-medium text-telegram-subtext hover:text-telegram-primary"
+                                                        >
+                                                            Create Folder
+                                                        </button>
+                                                    )}
                                                 </div>
                                             );
                                         }
@@ -291,8 +295,6 @@ export function FileExplorer({
                                                 activeFolderId={activeFolderId}
                                                 height={cardHeight}
                                                 onToggleSelection={() => onToggleSelection(file.id)}
-                                                pathLabel={getItemPath?.(file)}
-                                                highlighted={highlightedId === file.id}
                                             />
                                         );
                                     })}
@@ -331,15 +333,32 @@ export function FileExplorer({
                                         className="absolute top-0 left-0 w-full"
                                         style={{ transform: `translateY(${virtualItem.start}px)` }}
                                     >
-                                        <div className="grid gap-2">
-                                            <NewMenu
-                                                onUpload={onManualUpload}
-                                                onUploadFolder={onManualFolderUpload}
-                                                onCreateFolder={onCreateFolder}
-                                                targetLabel={currentPath}
-                                                variant="list"
-                                                align="left"
-                                            />
+                                        <div className={`grid gap-2 ${onManualFolderUpload || onCreateFolder ? 'grid-cols-3' : 'grid-cols-1'}`}>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); onManualUpload(); }}
+                                                className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer border border-dashed border-telegram-border text-telegram-subtext hover:text-telegram-text hover:bg-telegram-hover w-full"
+                                            >
+                                                <div className="w-5 h-5 flex items-center justify-center"><Plus className="w-4 h-4" /></div>
+                                                <span className="text-sm font-medium">Upload Files...</span>
+                                            </button>
+                                            {onManualFolderUpload && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); onManualFolderUpload(); }}
+                                                    className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer border border-dashed border-telegram-border text-telegram-subtext hover:text-telegram-text hover:bg-telegram-hover w-full"
+                                                >
+                                                    <div className="w-5 h-5 flex items-center justify-center"><Plus className="w-4 h-4" /></div>
+                                                    <span className="text-sm font-medium">Upload Folder...</span>
+                                                </button>
+                                            )}
+                                            {onCreateFolder && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); onCreateFolder(); }}
+                                                    className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer border border-dashed border-telegram-border text-telegram-subtext hover:text-telegram-text hover:bg-telegram-hover w-full"
+                                                >
+                                                    <div className="w-5 h-5 flex items-center justify-center"><FolderPlus className="w-4 h-4" /></div>
+                                                    <span className="text-sm font-medium">Create Folder...</span>
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -362,8 +381,6 @@ export function FileExplorer({
                                         onPreview={handlePreviewRequest}
                                         onDownload={onDownload}
                                         onDelete={onDelete}
-                                        pathLabel={getItemPath?.(file)}
-                                        highlighted={highlightedId === file.id}
                                     />
                                 </div>
                             );
@@ -416,10 +433,6 @@ export function FileExplorer({
                     } : undefined}
                     onCopy={onCopy ? () => {
                         onCopy(contextMenu.file);
-                        setContextMenu(null);
-                    } : undefined}
-                    onMove={onMove ? () => {
-                        onMove(contextMenu.file);
                         setContextMenu(null);
                     } : undefined}
                     onMergeFolder={onMergeFolder ? () => {

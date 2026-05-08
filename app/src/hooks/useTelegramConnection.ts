@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
-import { friendlyDriveError } from '../utils';
 import { TelegramFolder } from '../types';
 import { useNetworkStatus } from './useNetworkStatus';
 import { AppStore, invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime, loadAppStore } from '../platform';
@@ -199,7 +198,7 @@ export function useTelegramConnection(onLogoutParent: () => void) {
             if (!silent) toast.success(`Folder "${newFolder.name || name}" created.`);
             return newFolder;
         } catch (e) {
-            toast.error("Failed to create folder: " + friendlyDriveError(e));
+            toast.error("Failed to create folder: " + e);
             throw e;
         }
     };
@@ -270,7 +269,7 @@ export function useTelegramConnection(onLogoutParent: () => void) {
                     if (activeFolderId !== null && folderIdsToDelete.has(activeFolderId)) setActiveFolderId(null);
                 }
             } else {
-                toast.error(`Failed to delete folder: ${friendlyDriveError(e)}`);
+                toast.error(`Failed to delete folder: ${e}`);
             }
         }
     };

@@ -7,32 +7,6 @@ export function formatBytes(bytes: number, decimals = 2) {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
-export function friendlyDriveError(error: unknown): string {
-    const raw = error instanceof Error ? error.message : String(error || '');
-    const message = raw.replace(/^Error:\s*/i, '').trim();
-
-    if (/metadata not found/i.test(message)) {
-        return 'This item is missing from the drive index. Run Repair Index, then try again.';
-    }
-    if (/target folder metadata not found/i.test(message)) {
-        return 'The destination folder is missing from the drive index. Open the folder again or run Repair Index.';
-    }
-    if (/invalid protection pin/i.test(message)) {
-        return 'Wrong PIN. The item was not unlocked.';
-    }
-    if (/protection pin metadata missing/i.test(message)) {
-        return 'PIN protection metadata is missing. Remove protection or run Repair Index to recover it.';
-    }
-    if (/missing browser file payload/i.test(message) || /cannot use \[object file\] as file/i.test(message)) {
-        return 'The browser lost the selected file handle. Pick the file again and retry the upload.';
-    }
-    if (/telegram login required/i.test(message)) {
-        return 'Telegram login is required. Sign in again, then retry.';
-    }
-
-    return message || 'Something went wrong. Try again or run Repair Index.';
-}
-
 // File type classification.
 import type { TelegramFile } from './types';
 
