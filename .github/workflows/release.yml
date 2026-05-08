@@ -303,17 +303,33 @@ jobs:
         working-directory: app
         run: npm run tauri -- android init --ci --skip-targets-install
 
-      - name: Build and upload Android APK
-        uses: tauri-apps/tauri-action@v1
+      - name: Build Android APK
+        working-directory: app
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_DEFAULT_STORAGE: saved_messages
-        with:
-          releaseId: ${{ needs.create-release.outputs.release_id }}
-          projectPath: ./app
-          mobile: android
-          args: --debug --apk --target aarch64
-          releaseAssetNamePattern: "[name]_[version]_android_[arch]_[mode].[ext]"
+        run: npm run tauri -- android build --debug --apk --target aarch64
+
+      - name: Upload Android APK to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARTIFACT_DIR="android-release-assets"
+          mkdir -p "$ARTIFACT_DIR"
+
+          APK_INDEX=0
+          while IFS= read -r -d '' APK_PATH; do
+            APK_INDEX=$((APK_INDEX + 1))
+            cp "$APK_PATH" "${ARTIFACT_DIR}/Telegram_Drive_${VERSION}_android_aarch64_debug_${APK_INDEX}.apk"
+          done < <(find app/src-tauri/gen/android/app/build/outputs/apk -name "*.apk" -type f -print0)
+
+          if [ "$APK_INDEX" -eq 0 ]; then
+            echo "::error::No Android APK artifacts were generated"
+            exit 1
+          fi
+
+          gh release upload "$GITHUB_REF_NAME" "${ARTIFACT_DIR}"/*.apk --clobber
 
   publish-release:
     needs: [create-release, build-tauri, build-android]

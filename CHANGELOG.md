@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.22] - 2026-05-08
+
+### Android Release Workflow Fix
+
+- Fixed the Android release job to build the APK with the Tauri CLI directly instead of using an unsupported mobile action input.
+- The Android job now uploads generated APK files to the GitHub Release with stable Telegram Drive asset names.
+
 ## [1.1.21] - 2026-05-08
 
 ### Android APK Release Pipeline
