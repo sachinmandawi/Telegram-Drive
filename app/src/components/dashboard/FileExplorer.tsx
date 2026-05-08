@@ -80,6 +80,7 @@ export function FileExplorer({
     const [sortField, setSortField] = useState<SortField>('name');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: TelegramFile } | null>(null);
+    const shortUploadTargetLabel = useMemo(() => shortenTargetLabel(uploadTargetLabel), [uploadTargetLabel]);
 
     const parentRef = useRef<HTMLDivElement>(null);
     const { columns, containerWidth } = useGridColumns(parentRef);
@@ -253,10 +254,10 @@ export function FileExplorer({
                                             return (
                                                 <div
                                                     key="upload"
-                                                    className="border-2 border-dashed border-telegram-border rounded-xl flex flex-col items-center justify-center text-telegram-subtext hover:border-telegram-primary transition-all group p-3 gap-2"
+                                                    className="border-2 border-dashed border-telegram-border rounded-xl flex flex-col items-center justify-center overflow-hidden text-telegram-subtext hover:border-telegram-primary transition-all group p-3 gap-1.5"
                                                     style={{ height: `${cardHeight}px` }}
                                                 >
-                                                    <Plus className="w-8 h-8 mb-2 group-hover:scale-110 transition-transform" />
+                                                    <Plus className="w-6 h-6 mb-1 shrink-0 group-hover:scale-110 transition-transform" />
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); onManualUpload(); }}
                                                         className="text-sm font-medium hover:text-telegram-primary"
@@ -280,8 +281,11 @@ export function FileExplorer({
                                                         </button>
                                                     )}
                                                     {uploadTargetLabel && (
-                                                        <div className="max-w-full truncate text-[10px] text-telegram-subtext/70" title={uploadTargetLabel}>
-                                                            To: {uploadTargetLabel}
+                                                        <div
+                                                            className="mt-1 flex h-5 w-[90%] items-center justify-center overflow-hidden rounded border border-telegram-border bg-telegram-hover/80 px-2 text-[10px] leading-none text-telegram-subtext"
+                                                            title={`To: ${uploadTargetLabel}`}
+                                                        >
+                                                            <span className="block min-w-0 truncate">To: {shortUploadTargetLabel}</span>
                                                         </div>
                                                     )}
                                                 </div>
@@ -468,4 +472,10 @@ export function FileExplorer({
             )}
         </div>
     )
+}
+
+function shortenTargetLabel(label?: string) {
+    if (!label) return '';
+    const parts = label.split('/').map((part) => part.trim()).filter(Boolean);
+    return parts[parts.length - 1] || label;
 }

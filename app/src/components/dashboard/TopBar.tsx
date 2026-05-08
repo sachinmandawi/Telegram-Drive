@@ -57,7 +57,7 @@ export function TopBar({
                 </div>
             </div>
 
-            <div className="flex-1 max-w-xl mx-4 flex items-center gap-2">
+            <div className="flex-1 max-w-3xl mx-4 flex min-w-0 items-center gap-2">
                 <div className="flex-1 min-w-0">
                     <input
                         type="text"
@@ -66,13 +66,23 @@ export function TopBar({
                         value={searchTerm}
                         onChange={(e) => onSearchChange(e.target.value)}
                     />
-                    {(uploadTargetLabel || syncStatusText) && (
-                        <div className="mt-1 hidden items-center justify-between gap-3 text-[10px] leading-none text-telegram-subtext lg:flex">
-                            <span className="truncate">{uploadTargetLabel ? `To: ${uploadTargetLabel}` : ''}</span>
-                            <span className="shrink-0">{syncStatusText}</span>
-                        </div>
-                    )}
                 </div>
+                {uploadTargetLabel && (
+                    <div
+                        className="hidden h-8 min-w-0 max-w-[13rem] items-center overflow-hidden rounded-lg border border-telegram-border bg-telegram-hover px-2 text-[11px] leading-none text-telegram-subtext lg:flex"
+                        title={`To: ${uploadTargetLabel}`}
+                    >
+                        <span className="block min-w-0 truncate">To: {uploadTargetLabel}</span>
+                    </div>
+                )}
+                {syncStatusText && (
+                    <div
+                        className="hidden h-8 shrink-0 items-center rounded-lg border border-telegram-border/80 px-2 text-[11px] leading-none text-telegram-subtext xl:flex"
+                        title={syncStatusText}
+                    >
+                        {syncStatusText}
+                    </div>
+                )}
                 <div className="flex rounded-md border border-telegram-border bg-telegram-hover p-0.5 text-[11px]">
                     <button onClick={() => onSearchScopeChange('current')} className={`rounded px-2 py-1 ${searchScope === 'current' ? 'bg-telegram-primary text-black' : 'text-telegram-subtext'}`}>Here</button>
                     <button onClick={() => onSearchScopeChange('drive')} className={`rounded px-2 py-1 ${searchScope === 'drive' ? 'bg-telegram-primary text-black' : 'text-telegram-subtext'}`}>Drive</button>

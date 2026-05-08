@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.19] - 2026-05-08
+
+### Target Label Visibility Fix
+
+- Fixed the toolbar upload target label being clipped under the search box.
+- Fixed the grid upload tile target label being cut off at the bottom by showing a compact current-folder pill with the full path in the tooltip.
+- Tightened target-label truncation so long folder paths stay one-line and do not overlap nearby controls.
+
 ## [1.1.18] - 2026-05-08
 
 ### Move Target Metadata Fix
