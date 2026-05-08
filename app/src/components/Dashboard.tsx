@@ -92,15 +92,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const { data: allFiles = [], isLoading, error } = useQuery({
         queryKey: ['files', driveView, activeFolderId, activeTrashFolderId],
         queryFn: () => {
-            const command = driveView === 'starred'
-                ? 'cmd_get_starred_files'
-                : driveView === 'trash'
-                    ? 'cmd_get_trash_files'
-                    : driveView === 'recent'
-                        ? 'cmd_get_recent_items'
-                        : driveView === 'quick'
-                            ? 'cmd_get_quick_access_items'
-                            : 'cmd_get_files';
+            const command = driveView === 'trash'
+                ? 'cmd_get_trash_files'
+                : driveView === 'recent'
+                    ? 'cmd_get_recent_items'
+                    : 'cmd_get_files';
             const args = driveView === 'files'
                 ? { folderId: activeFolderId }
                 : driveView === 'trash'
@@ -413,14 +409,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             setIsSearching(true);
             if (searchScope === 'current') {
                 setSearchResults(currentFolderItems.filter((file) => file.name.toLowerCase().includes(searchTerm.toLowerCase())));
-            } else if (driveView === 'trash' || driveView === 'starred' || driveView === 'recent' || driveView === 'quick') {
+            } else if (driveView === 'trash' || driveView === 'recent') {
                 const command = driveView === 'trash'
                     ? 'cmd_get_trash_files'
-                    : driveView === 'starred'
-                        ? 'cmd_get_starred_files'
-                        : driveView === 'quick'
-                            ? 'cmd_get_quick_access_items'
-                            : 'cmd_get_recent_items';
+                    : 'cmd_get_recent_items';
                 const results = await invokeCommand<any[]>(command, { query: searchTerm, folderId: driveView === 'trash' ? activeTrashFolderId : undefined });
                 setSearchResults(results.map((file) => ({
                     ...file,
@@ -622,12 +614,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         }
     }
 
-    const currentFolderName = driveView === 'starred'
-        ? "Starred"
-        : driveView === 'recent'
+    const currentFolderName = driveView === 'recent'
             ? "Recent"
-            : driveView === 'quick'
-                ? "Quick Access"
         : driveView === 'gallery'
             ? "Gallery"
             : driveView === 'media'
@@ -814,32 +802,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         }
     }, [handleSyncFolders, queryClient, savedMessagesDefault]);
 
-    const handleToggleStar = useCallback(async (file: TelegramFile) => {
-        if (!savedMessagesDefault) return;
-
-        try {
-            await invokeCommand('cmd_toggle_star', { messageId: file.id, itemType: file.type || 'file', starred: !file.starred });
-            queryClient.invalidateQueries({ queryKey: ['files'] });
-            await handleSyncFolders();
-            toast.success(file.starred ? "Removed from starred" : "Added to starred");
-        } catch (e) {
-            toast.error(`Star update failed: ${e}`);
-        }
-    }, [handleSyncFolders, queryClient, savedMessagesDefault]);
-
-    const handleBulkStar = useCallback(async () => {
-        const items = displayedFiles.filter((file) => selectedIds.includes(file.id));
-        if (items.length === 0) return;
-        try {
-            await Promise.all(items.map((file) => invokeCommand('cmd_toggle_star', { messageId: file.id, itemType: file.type || 'file', starred: true })));
-            queryClient.invalidateQueries({ queryKey: ['files'] });
-            await handleSyncFolders();
-            toast.success(`Starred ${items.length} item(s).`);
-        } catch (e) {
-            toast.error(`Bulk star failed: ${e}`);
-        }
-    }, [displayedFiles, handleSyncFolders, queryClient, selectedIds]);
-
     const handleSelectedBulkDownload = useCallback(() => {
         if (selectedFileCount === 0) {
             toast.info("Select at least one file to download.");
@@ -855,14 +817,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         }
         setTagTarget('bulk');
     }, [selectedFileCount]);
-
-    const handleSelectedBulkStar = useCallback(() => {
-        if (selectedIds.length === 0) {
-            toast.info("Select at least one item to star.");
-            return;
-        }
-        void handleBulkStar();
-    }, [handleBulkStar, selectedIds.length]);
 
     const handleSaveTags = useCallback(async (tags: string[]) => {
         const target = tagTarget;
@@ -1007,17 +961,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             toast.error(`Protection update failed: ${e}`);
         }
     }, [ensureProtectedAccess, handleSyncFolders, queryClient]);
-
-    const handleTogglePin = useCallback(async (file: TelegramFile) => {
-        try {
-            await invokeCommand('cmd_toggle_pin', { messageId: file.id, itemType: file.type || 'file', pinned: !file.pinned });
-            queryClient.invalidateQueries({ queryKey: ['files'] });
-            await handleSyncFolders();
-            toast.success(file.pinned ? 'Removed from Quick Access' : 'Pinned to Quick Access');
-        } catch (e) {
-            toast.error(`Pin update failed: ${e}`);
-        }
-    }, [handleSyncFolders, queryClient]);
 
     const handleFolderColor = useCallback(async (file: TelegramFile, color: string) => {
         if (file.type !== 'folder') return;
@@ -1189,7 +1132,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onSearchScopeChange={setSearchScope}
                     savedMessagesOnly={driveView !== 'files'}
                     onBulkTag={handleSelectedBulkTag}
-                    onBulkStar={handleSelectedBulkStar}
                     onOpenTools={() => setShowTools(true)}
                     onRepairDrive={savedMessagesDefault ? handleRepairDrive : undefined}
                     isRepairing={isRepairingDrive}
@@ -1222,12 +1164,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onDrop={handleDropOnFolder}
                     onDragStart={(fileId) => setInternalDragFileId(fileId)}
                     onDragEnd={() => setTimeout(() => setInternalDragFileId(null), 50)}
-                    onToggleStar={handleToggleStar}
                     onRestore={handleRestoreFile}
                     onEditTags={(file) => setTagTarget(file)}
                     onVerify={handleVerifyFile}
                     onRename={handleRenameItem}
-                    onTogglePin={handleTogglePin}
                     onSetFolderColor={handleFolderColor}
                     onShowVersions={handleShowVersions}
                     onCopy={handleCopyItem}
@@ -1309,8 +1249,6 @@ function folderToExplorerItem(folder: TelegramFolder): TelegramFile {
         created_at: folder.deletedAt ? new Date(folder.deletedAt).toLocaleString() : '',
         type: 'folder',
         folderId: folder.parent_id ?? null,
-        starred: folder.starred || false,
-        pinned: folder.pinned || false,
         color: folder.color,
         locked: folder.locked || false,
         protected: folder.protected || false,

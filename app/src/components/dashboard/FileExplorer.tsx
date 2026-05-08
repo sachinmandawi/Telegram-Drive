@@ -30,12 +30,10 @@ interface FileExplorerProps {
     onDrop?: (e: React.DragEvent, folderId: number) => void;
     onDragStart?: (fileId: number) => void;
     onDragEnd?: () => void;
-    onToggleStar?: (file: TelegramFile) => void;
     onRestore?: (file: TelegramFile) => void;
     onEditTags?: (file: TelegramFile) => void;
     onVerify?: (file: TelegramFile) => void;
     onRename?: (file: TelegramFile) => void;
-    onTogglePin?: (file: TelegramFile) => void;
     onSetFolderColor?: (file: TelegramFile, color: string) => void;
     onShowVersions?: (file: TelegramFile) => void;
     onCopy?: (file: TelegramFile) => void;
@@ -73,7 +71,7 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
 
 export function FileExplorer({
     files, loading, error, viewMode, selectedIds, activeFolderId,
-    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onToggleStar, onRestore, onEditTags, onVerify, onRename, onTogglePin, onSetFolderColor, onShowVersions, onCopy, onMergeFolder, onToggleLock, onToggleProtection
+    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMergeFolder, onToggleLock, onToggleProtection
 }: FileExplorerProps) {
     const [sortField, setSortField] = useState<SortField>('name');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -409,10 +407,6 @@ export function FileExplorer({
                         handlePreviewRequest(contextMenu.file);
                         setContextMenu(null);
                     }}
-                    onToggleStar={onToggleStar ? () => {
-                        onToggleStar(contextMenu.file);
-                        setContextMenu(null);
-                    } : undefined}
                     onRestore={onRestore && contextMenu.file.trashed ? () => {
                         onRestore(contextMenu.file);
                         setContextMenu(null);
@@ -427,10 +421,6 @@ export function FileExplorer({
                     } : undefined}
                     onRename={onRename ? () => {
                         onRename(contextMenu.file);
-                        setContextMenu(null);
-                    } : undefined}
-                    onTogglePin={onTogglePin ? () => {
-                        onTogglePin(contextMenu.file);
                         setContextMenu(null);
                     } : undefined}
                     onSetFolderColor={onSetFolderColor ? (color) => {

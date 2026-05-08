@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Folder, Eye, HardDrive, Lock, Plus, Shield, Star } from 'lucide-react';
+import { Folder, Eye, HardDrive, Lock, Plus, Shield } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { FileTypeIcon } from '../FileTypeIcon';
 
@@ -68,7 +68,6 @@ export function FileListItem({
                 {isFolder ? <Folder className="w-5 h-5" style={{ color: file.color || undefined }} /> : <FileTypeIcon filename={file.name} className="w-5 h-5" />}
             </div>
             <div className="truncate text-sm text-telegram-text font-medium relative pr-8">
-                {file.starred && <Star className="inline w-3 h-3 mr-1 text-yellow-400 fill-yellow-400 align-[-1px]" />}
                 {file.locked && <Lock className="inline w-3 h-3 mr-1 text-amber-400 align-[-1px]" />}
                 {file.protected && <Shield className="inline w-3 h-3 mr-1 text-telegram-primary align-[-1px]" />}
                 {file.name}

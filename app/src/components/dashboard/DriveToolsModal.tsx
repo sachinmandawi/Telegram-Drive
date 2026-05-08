@@ -165,7 +165,6 @@ export function DriveToolsModal({
                             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                                 <Metric label="Active Files" value={String(stats.activeFiles)} />
                                 <Metric label="Used" value={formatBytes(stats.activeBytes)} />
-                                <Metric label="Starred" value={String(stats.starredFiles)} />
                                 <Metric label="Trash" value={String(stats.trashedFiles)} />
                                 <Metric label="Duplicates" value={String(stats.duplicateFiles)} />
                                 <Metric label="Text Indexed" value={String(stats.indexedTextFiles)} />
@@ -371,7 +370,7 @@ export function DriveToolsModal({
                 </div>
 
                 <div className="border-t border-telegram-border px-4 py-3 text-xs text-telegram-subtext">
-                    {selectedCount > 0 ? `${selectedCount} selected file(s) can be tagged, starred, moved, downloaded, or deleted from the toolbar.` : 'Select files to use bulk actions from the toolbar.'}
+                    {selectedCount > 0 ? `${selectedCount} selected file(s) can be tagged, moved, downloaded, or deleted from the toolbar.` : 'Select files to use bulk actions from the toolbar.'}
                 </div>
             </div>
         </div>

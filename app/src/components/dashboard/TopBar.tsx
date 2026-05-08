@@ -1,4 +1,4 @@
-import { CheckSquare, FolderPlus, HardDrive, LayoutGrid, Sun, Moon, Wrench, SlidersHorizontal, Tag, Star, X } from 'lucide-react';
+import { CheckSquare, FolderPlus, HardDrive, LayoutGrid, Sun, Moon, Wrench, SlidersHorizontal, Tag, X } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 
 interface TopBarProps {
@@ -16,7 +16,6 @@ interface TopBarProps {
     onBulkRestore?: () => void;
     onDownloadFolder: () => void;
     onBulkTag: () => void;
-    onBulkStar: () => void;
     onOpenTools: () => void;
     viewMode: 'grid' | 'list';
     setViewMode: (mode: 'grid' | 'list') => void;
@@ -31,7 +30,7 @@ interface TopBarProps {
 
 export function TopBar({
     currentFolderName, selectedIds, onShowMoveModal, onBulkDownload, onBulkDelete,
-    onDownloadFolder, onBulkTag, onBulkStar, onOpenTools, viewMode, setViewMode, searchTerm, onSearchChange, savedMessagesOnly = false,
+    onDownloadFolder, onBulkTag, onOpenTools, viewMode, setViewMode, searchTerm, onSearchChange, savedMessagesOnly = false,
     onRepairDrive, isRepairing = false, onSelectAll, onClearSelection, allSelected, selectableCount, breadcrumbs, onBulkRestore,
     searchScope, onSearchScopeChange, onCreateFolder
 }: TopBarProps) {
@@ -70,7 +69,7 @@ export function TopBar({
                     <button onClick={() => onSearchScopeChange('current')} className={`rounded px-2 py-1 ${searchScope === 'current' ? 'bg-telegram-primary text-black' : 'text-telegram-subtext'}`}>Here</button>
                     <button onClick={() => onSearchScopeChange('drive')} className={`rounded px-2 py-1 ${searchScope === 'drive' ? 'bg-telegram-primary text-black' : 'text-telegram-subtext'}`}>Drive</button>
                 </div>
-                {['type:pdf', 'type:image', 'starred', 'trash', 'size>10mb'].map((chip) => (
+                {['type:pdf', 'type:image', 'trash', 'size>10mb'].map((chip) => (
                     <button
                         key={chip}
                         onClick={() => onSearchChange(chip)}
@@ -93,7 +92,6 @@ export function TopBar({
                         {!savedMessagesOnly && <button onClick={onShowMoveModal} className="px-3 py-1.5 bg-telegram-primary/20 hover:bg-telegram-primary/30 text-telegram-primary rounded-md text-xs transition font-medium">Move to...</button>}
                         {onBulkRestore && <button onClick={onBulkRestore} className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 rounded-md text-xs transition">Restore</button>}
                         <button onClick={onBulkTag} className="px-3 py-1.5 bg-telegram-hover hover:bg-telegram-border rounded-md text-xs text-telegram-text transition inline-flex items-center gap-1"><Tag className="w-3 h-3" /> Tags</button>
-                        <button onClick={onBulkStar} className="px-3 py-1.5 bg-telegram-hover hover:bg-telegram-border rounded-md text-xs text-telegram-text transition inline-flex items-center gap-1"><Star className="w-3 h-3" /> Star</button>
                         <button onClick={onBulkDownload} className="px-3 py-1.5 bg-telegram-hover hover:bg-telegram-border rounded-md text-xs text-telegram-text transition">Download Selected</button>
                         <button onClick={onBulkDelete} className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-md text-xs transition">Delete</button>
                     </div>

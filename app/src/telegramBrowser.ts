@@ -50,14 +50,12 @@ type DriveEventType =
     | 'folder_created'
     | 'folder_moved'
     | 'folder_renamed'
-    | 'folder_starred'
     | 'folder_colored'
     | 'folder_trashed'
     | 'folder_restored'
     | 'folder_deleted'
     | 'folder_copied'
     | 'folder_merged'
-    | 'item_pinned'
     | 'item_locked'
     | 'item_protected'
     | 'file_uploaded'
@@ -67,7 +65,6 @@ type DriveEventType =
     | 'file_deleted'
     | 'file_restored'
     | 'file_copied'
-    | 'file_starred'
     | 'file_tagged'
     | 'file_verified'
     | 'text_indexed'
@@ -105,8 +102,6 @@ type DriveFileRecord = {
     updatedAt?: string;
     mimeType?: string;
     tags?: string[];
-    starred?: boolean;
-    pinned?: boolean;
     color?: string;
     locked?: boolean;
     protected?: boolean;
@@ -481,28 +476,6 @@ export async function telegramSearchFiles(query: string): Promise<TelegramFile[]
         });
 }
 
-export async function telegramGetStarredFiles(query?: string): Promise<TelegramFile[]> {
-    const manifest = await getDriveManifest();
-    const starredFolderIds = collectFlaggedFolderTreeIds(manifest, 'starred');
-    const folders = manifest.folders
-        .filter((folder) => starredFolderIds.has(folder.id) && !isFolderOrAncestorTrashed(folder, manifest.folders))
-        .map((folder) => folderToExplorerFile(folder, manifest));
-    const filters = parseSmartSearchQuery(query || '');
-    const files = Object.values(manifest.files)
-        .filter((record) => {
-            if (record.trashed || record.missing || isFileInsideTrashedFolder(record, manifest)) return false;
-            const folderId = record.folderId ?? manifest.fileFolders[String(record.messageId)] ?? null;
-            return Boolean(record.starred) || (folderId !== null && starredFolderIds.has(folderId));
-        })
-        .filter((record) => !query || matchesSmartSearch(record, filters))
-        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
-        .map(recordToTelegramFile);
-    const normalizedQuery = normalizeSearchText(query || '');
-    return [...folders, ...files]
-        .filter((item) => !normalizedQuery || normalizeSearchText(item.name).includes(normalizedQuery))
-        .sort(sortTelegramItemsByUpdatedAt);
-}
-
 export async function telegramGetTrashFiles(query?: string, folderId?: number | null): Promise<TelegramFile[]> {
     const manifest = await getDriveManifest();
     const targetFolderId = folderId === undefined ? null : folderId;
@@ -548,26 +521,6 @@ export async function telegramGetRecentItems(query?: string): Promise<TelegramFi
         .filter((item) => !normalizedQuery || normalizeSearchText([item.name, item.tags?.join(' ')].filter(Boolean).join(' ')).includes(normalizedQuery))
         .sort(sortTelegramItemsByUpdatedAt)
         .slice(0, 120);
-}
-
-export async function telegramGetQuickAccessItems(query?: string): Promise<TelegramFile[]> {
-    const manifest = await getDriveManifest();
-    const normalizedQuery = normalizeSearchText(query || '');
-    const pinnedFolderIds = collectFlaggedFolderTreeIds(manifest, 'pinned');
-    const folders = manifest.folders
-        .filter((folder) => pinnedFolderIds.has(folder.id) && !isFolderOrAncestorTrashed(folder, manifest.folders))
-        .map((folder) => folderToExplorerFile(folder, manifest));
-    const files = Object.values(manifest.files)
-        .filter((record) => {
-            if (record.trashed || record.missing || isFileInsideTrashedFolder(record, manifest)) return false;
-            const folderId = record.folderId ?? manifest.fileFolders[String(record.messageId)] ?? null;
-            return Boolean(record.pinned) || (folderId !== null && pinnedFolderIds.has(folderId));
-        })
-        .map(recordToTelegramFile);
-
-    return [...folders, ...files]
-        .filter((item) => !normalizedQuery || normalizeSearchText(item.name).includes(normalizedQuery))
-        .sort(sortTelegramItemsByUpdatedAt);
 }
 
 export async function telegramDeleteFile(messageId: number): Promise<boolean> {
@@ -680,38 +633,6 @@ export async function telegramPermanentlyDeleteFile(messageId: number): Promise<
     delete manifest.fileFolders[key];
     delete manifest.files[key];
     appendManifestEvent(manifest, 'file_deleted', { messageId });
-    await saveDriveManifest(manifest, 'debounced');
-    return true;
-}
-
-export async function telegramToggleStarFile(messageId: number, starred?: boolean): Promise<boolean> {
-    const manifest = await getDriveManifest();
-    const key = String(messageId);
-    const record = manifest.files[key];
-    if (!record) throw new Error('File metadata not found');
-
-    manifest.files[key] = {
-        ...record,
-        starred: starred ?? !record.starred,
-        updatedAt: new Date().toISOString(),
-    };
-    appendManifestEvent(manifest, 'file_starred', { messageId, starred: manifest.files[key].starred });
-    await saveDriveManifest(manifest, 'debounced');
-    return true;
-}
-
-export async function telegramToggleStarItem(id: number, itemType: 'file' | 'folder', starred?: boolean): Promise<boolean> {
-    if (itemType !== 'folder') return telegramToggleStarFile(id, starred);
-    const manifest = await getDriveManifest();
-    const folder = manifest.folders.find((item) => item.id === id);
-    if (!folder) throw new Error('Folder metadata not found');
-    const nextStarred = starred ?? !folder.starred;
-    replaceManifestFolder(manifest.folders, {
-        ...folder,
-        starred: nextStarred,
-        updatedAt: new Date().toISOString(),
-    });
-    appendManifestEvent(manifest, 'folder_starred', { folderId: id, starred: nextStarred });
     await saveDriveManifest(manifest, 'debounced');
     return true;
 }
@@ -844,8 +765,6 @@ async function copyRecordToFolder(
     manifest.files[key] = {
         ...uploadedRecord,
         tags: source.tags ? [...source.tags] : [],
-        starred: false,
-        pinned: false,
         color: source.color,
         locked: false,
         protected: false,
@@ -896,24 +815,6 @@ export async function telegramRenameItem(id: number, itemType: 'file' | 'folder'
     appendManifestEvent(manifest, 'file_renamed', { messageId: id, name: nextName });
     await saveDriveManifest(manifest, 'debounced');
     return recordToTelegramFile(manifest.files[key]);
-}
-
-export async function telegramTogglePinItem(id: number, itemType: 'file' | 'folder', pinned?: boolean): Promise<boolean> {
-    const manifest = await getDriveManifest();
-    const updatedAt = new Date().toISOString();
-    if (itemType === 'folder') {
-        const folder = manifest.folders.find((item) => item.id === id);
-        if (!folder) throw new Error('Folder metadata not found');
-        replaceManifestFolder(manifest.folders, { ...folder, pinned: pinned ?? !folder.pinned, updatedAt });
-    } else {
-        const key = String(id);
-        const record = manifest.files[key];
-        if (!record) throw new Error('File metadata not found');
-        manifest.files[key] = { ...record, pinned: pinned ?? !record.pinned, updatedAt };
-    }
-    appendManifestEvent(manifest, 'item_pinned', { id, itemType, pinned });
-    await saveDriveManifest(manifest, 'debounced');
-    return true;
 }
 
 export async function telegramSetFolderColor(folderId: number, color: string): Promise<boolean> {
@@ -1517,7 +1418,6 @@ export async function telegramRepairManifest(): Promise<{
             ...record,
             folderId: before?.folderId ?? manifest.fileFolders[key] ?? null,
             tags: before?.tags,
-            starred: before?.starred,
             trashed: before?.trashed,
             deletedAt: before?.deletedAt,
             checksum: before?.checksum,
@@ -2058,8 +1958,6 @@ function normalizeFolderRecord(folder: TelegramFolder): TelegramFolder {
     normalized.trashed = Boolean(folder.trashed);
     if (typeof folder.deletedAt === 'string') normalized.deletedAt = folder.deletedAt;
     if (typeof folder.updatedAt === 'string') normalized.updatedAt = folder.updatedAt;
-    normalized.starred = Boolean(folder.starred);
-    normalized.pinned = Boolean(folder.pinned);
     if (typeof folder.color === 'string') normalized.color = normalizeFolderColor(folder.color);
     normalized.locked = Boolean(folder.locked);
     normalized.protected = Boolean(folder.protected);
@@ -2083,8 +1981,6 @@ function normalizeLifecycleRecord(messageId: number, record: Partial<DriveFileRe
         updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : undefined,
         mimeType: typeof record.mimeType === 'string' ? record.mimeType : undefined,
         tags: normalizeTags(record.tags || []),
-        starred: Boolean(record.starred),
-        pinned: Boolean(record.pinned),
         color: typeof record.color === 'string' ? normalizeFolderColor(record.color) : undefined,
         locked: Boolean(record.locked),
         protected: Boolean(record.protected),
@@ -2157,8 +2053,6 @@ function normalizeFolders(folders: TelegramFolder[]): TelegramFolder[] {
         trashed: Boolean(folder.trashed),
         deletedAt: typeof folder.deletedAt === 'string' ? folder.deletedAt : undefined,
         updatedAt: typeof folder.updatedAt === 'string' ? folder.updatedAt : undefined,
-        starred: Boolean(folder.starred),
-        pinned: Boolean(folder.pinned),
         color: typeof folder.color === 'string' ? normalizeFolderColor(folder.color) : undefined,
         locked: Boolean(folder.locked),
         protected: Boolean(folder.protected),
@@ -2257,8 +2151,6 @@ function normalizeFileRecords(
             updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : undefined,
             mimeType: typeof record.mimeType === 'string' ? record.mimeType : undefined,
             tags: normalizeTags(record.tags || []),
-            starred: Boolean(record.starred),
-            pinned: Boolean(record.pinned),
             color: typeof record.color === 'string' ? normalizeFolderColor(record.color) : undefined,
             locked: Boolean(record.locked),
             protected: Boolean(record.protected),
@@ -2319,9 +2211,7 @@ function applyFileLifecycleEvents(
             && event.type !== 'file_restored'
             && event.type !== 'file_deleted'
             && event.type !== 'file_renamed'
-            && event.type !== 'file_starred'
             && event.type !== 'file_tagged'
-            && event.type !== 'item_pinned'
             && event.type !== 'item_locked'
             && event.type !== 'item_protected'
         ) {
@@ -2329,7 +2219,7 @@ function applyFileLifecycleEvents(
         }
 
         const itemType = event.payload?.itemType === 'folder' ? 'folder' : 'file';
-        if ((event.type === 'item_pinned' || event.type === 'item_locked' || event.type === 'item_protected') && itemType === 'folder') continue;
+        if ((event.type === 'item_locked' || event.type === 'item_protected') && itemType === 'folder') continue;
         const messageId = Number(event.payload?.messageId ?? event.payload?.id);
         if (!Number.isFinite(messageId)) continue;
         const key = String(messageId);
@@ -2367,22 +2257,10 @@ function applyFileLifecycleEvents(
                 name: event.payload.name,
                 updatedAt: laterTimestamp(record.updatedAt, event.at),
             };
-        } else if (event.type === 'file_starred') {
-            normalized[key] = {
-                ...record,
-                starred: Boolean(event.payload?.starred),
-                updatedAt: laterTimestamp(record.updatedAt, event.at),
-            };
         } else if (event.type === 'file_tagged') {
             normalized[key] = {
                 ...record,
                 tags: normalizeTags(Array.isArray(event.payload?.tags) ? event.payload.tags.map(String) : []),
-                updatedAt: laterTimestamp(record.updatedAt, event.at),
-            };
-        } else if (event.type === 'item_pinned') {
-            normalized[key] = {
-                ...record,
-                pinned: Boolean(event.payload?.pinned),
                 updatedAt: laterTimestamp(record.updatedAt, event.at),
             };
         } else if (event.type === 'item_locked') {
@@ -2458,21 +2336,9 @@ function applyFolderLifecycleEvents(
             continue;
         }
 
-        if (event.type === 'folder_starred') {
-            const folder = normalized.find((item) => item.id === folderId);
-            if (folder) replaceManifestFolder(normalized, { ...folder, starred: Boolean(event.payload?.starred), updatedAt: laterTimestamp(folder.updatedAt, event.at) });
-            continue;
-        }
-
         if (event.type === 'folder_colored' && typeof event.payload?.color === 'string') {
             const folder = normalized.find((item) => item.id === folderId);
             if (folder) replaceManifestFolder(normalized, { ...folder, color: normalizeFolderColor(event.payload.color), updatedAt: laterTimestamp(folder.updatedAt, event.at) });
-            continue;
-        }
-
-        if (event.type === 'item_pinned' && event.payload?.itemType === 'folder') {
-            const folder = normalized.find((item) => item.id === Number(event.payload?.id));
-            if (folder) replaceManifestFolder(normalized, { ...folder, pinned: Boolean(event.payload?.pinned), updatedAt: laterTimestamp(folder.updatedAt, event.at) });
             continue;
         }
 
@@ -2786,7 +2652,6 @@ function createFileRecordFromMessage(message: TelegramMessage, manifest: DriveMa
         updatedAt: createdAt,
         mimeType: message.file?.mimeType || undefined,
         tags: [],
-        starred: false,
         trashed: false,
         missing: false,
     };
@@ -3452,7 +3317,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.1.12-web',
+        appVersion: '1.1.13-web',
     });
 
     await client.connect();
@@ -3489,8 +3354,6 @@ function toTelegramFile(message: TelegramMessage, manifest?: DriveManifest): Tel
         mime_type: record?.mimeType || message.file?.mimeType || undefined,
         file_ext: getFilenameExtension(record?.name || getMessageFilename(message)),
         tags: record?.tags || [],
-        starred: record?.starred || false,
-        pinned: record?.pinned || false,
         color: record?.color,
         locked: record?.locked || false,
         protected: record?.protected || false,
@@ -3523,8 +3386,6 @@ function recordToTelegramFile(record: DriveFileRecord): TelegramFile {
         mime_type: record.mimeType,
         file_ext: getFilenameExtension(record.name),
         tags: record.tags || [],
-        starred: record.starred || false,
-        pinned: record.pinned || false,
         color: record.color,
         locked: record.locked || false,
         protected: record.protected || false,
@@ -3554,8 +3415,6 @@ function folderToExplorerFile(folder: TelegramFolder, manifest: DriveManifest): 
         created_at: folder.updatedAt ? new Date(folder.updatedAt).toLocaleString() : '',
         type: 'folder',
         folderId: folder.parent_id ?? null,
-        starred: folder.starred || false,
-        pinned: folder.pinned || false,
         color: folder.color,
         locked: folder.locked || false,
         protected: folder.protected || false,
@@ -3583,8 +3442,6 @@ function folderToTrashFile(folder: TelegramFolder, manifest: DriveManifest): Tel
         created_at: deletedAt ? new Date(deletedAt).toLocaleString() : '',
         type: 'folder',
         folderId: folder.parent_id ?? null,
-        starred: folder.starred || false,
-        pinned: folder.pinned || false,
         color: folder.color,
         locked: folder.locked || false,
         protected: folder.protected || false,
@@ -3604,18 +3461,6 @@ function isFileInsideTrashedFolder(record: DriveFileRecord, manifest: DriveManif
     if (folderId === null) return false;
     const folder = manifest.folders.find((item) => item.id === folderId);
     return Boolean(folder && isFolderOrAncestorTrashed(folder, manifest.folders));
-}
-
-function collectFlaggedFolderTreeIds(manifest: DriveManifest, flag: 'starred' | 'pinned'): Set<number> {
-    const ids = new Set<number>();
-    for (const folder of manifest.folders) {
-        if (!folder[flag] || isFolderOrAncestorTrashed(folder, manifest.folders)) continue;
-        for (const id of collectManifestFolderTreeIds(folder.id, manifest.folders)) {
-            const descendant = manifest.folders.find((item) => item.id === id);
-            if (descendant && !isFolderOrAncestorTrashed(descendant, manifest.folders)) ids.add(id);
-        }
-    }
-    return ids;
 }
 
 function isInsideTrashedFolder(folder: TelegramFolder, folders: TelegramFolder[]): boolean {
@@ -3644,7 +3489,6 @@ type SmartSearchFilters = {
     tags: string[];
     types: string[];
     extensions: string[];
-    starred?: boolean;
     trashed?: boolean;
     duplicate?: boolean;
     verified?: boolean;
@@ -3672,8 +3516,6 @@ function parseSmartSearchQuery(query: string): SmartSearchFilters {
             filters.types.push(lower.slice(5));
         } else if (lower.startsWith('ext:')) {
             filters.extensions.push(lower.slice(4).replace(/^\./, ''));
-        } else if (lower === 'starred' || lower === 'starred:true') {
-            filters.starred = true;
         } else if (lower === 'trash' || lower === 'trashed:true') {
             filters.trashed = true;
         } else if (lower === '-trash' || lower === 'trashed:false') {
@@ -3695,7 +3537,6 @@ function parseSmartSearchQuery(query: string): SmartSearchFilters {
 }
 
 function matchesSmartSearch(record: DriveFileRecord, filters: SmartSearchFilters): boolean {
-    if (filters.starred !== undefined && Boolean(record.starred) !== filters.starred) return false;
     if (filters.trashed !== undefined && Boolean(record.trashed) !== filters.trashed) return false;
     if (filters.duplicate !== undefined && Boolean(record.duplicateOf || record.versionGroup) !== filters.duplicate) return false;
     if (filters.verified !== undefined && (record.integrityStatus === 'valid') !== filters.verified) return false;
@@ -3763,8 +3604,6 @@ function buildDriveStats(manifest: DriveManifest): DriveStats {
         totalFiles: records.length,
         activeFiles: active.length,
         trashedFiles: trashed.length,
-        starredFiles: records.filter((record) => record.starred && !record.trashed).length
-            + manifest.folders.filter((folder) => folder.starred && !folder.trashed).length,
         duplicateFiles: records.filter((record) => record.duplicateOf || record.versionGroup).length,
         missingFiles: records.filter((record) => record.missing).length,
         totalBytes: records.reduce((sum, record) => sum + (record.size || 0), 0),

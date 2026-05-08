@@ -25,10 +25,8 @@ import {
     telegramGetRecoveryItems,
     telegramGetOfflineCacheStats,
     telegramGetObjectUrl,
-    telegramGetQuickAccessItems,
     telegramGetRecentItems,
     telegramGetStorageHealth,
-    telegramGetStarredFiles,
     telegramGetTrashFiles,
     telegramExportManifest,
     telegramImportManifest,
@@ -54,9 +52,7 @@ import {
     telegramSignIn,
     telegramSetFileTags,
     telegramSwitchAccount,
-    telegramToggleStarItem,
     telegramToggleLockItem,
-    telegramTogglePinItem,
     telegramUnlockProtectedItem,
     telegramUploadFile,
     telegramVerifyFile,
@@ -87,8 +83,6 @@ type WebFileRecord = {
     file_ext?: string;
     blob: Blob;
     tags?: string[];
-    starred?: boolean;
-    pinned?: boolean;
     color?: string;
     locked?: boolean;
     protected?: boolean;
@@ -211,7 +205,6 @@ async function invokeTauriCommand<T>(invoke: TauriInvokeFn, command: string, arg
         case 'cmd_get_trash_files':
             return getLegacyTrashFiles(String(args.query || '')) as T;
         case 'cmd_get_recent_items':
-        case 'cmd_get_quick_access_items':
         case 'cmd_get_activity_items':
         case 'cmd_get_cleanup_suggestions':
         case 'cmd_get_file_versions':
@@ -249,7 +242,6 @@ async function invokeTauriCommand<T>(invoke: TauriInvokeFn, command: string, arg
         }
         case 'cmd_set_trash_retention':
         case 'cmd_flush_manifest':
-        case 'cmd_toggle_pin':
         case 'cmd_toggle_lock':
             return true as T;
         case 'cmd_move_folders':
@@ -260,8 +252,6 @@ async function invokeTauriCommand<T>(invoke: TauriInvokeFn, command: string, arg
         case 'cmd_set_protection':
         case 'cmd_unlock_item':
             throw new Error('PIN protection requires Saved Messages storage');
-        case 'cmd_get_starred_files':
-            return [] as T;
         default:
             return await invoke<T>(command, args);
     }
@@ -423,8 +413,6 @@ export async function uploadBrowserFile(
         file_ext: getExtension(file.name),
         blob: file,
         tags: [],
-        starred: false,
-        pinned: false,
         locked: false,
         protected: false,
         trashed: false,
@@ -520,8 +508,6 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
             return await getWebFiles((args.folderId as number | null | undefined) ?? null) as T;
         case 'cmd_get_recent_items':
             return await searchWebFiles(String(args.query || '')) as T;
-        case 'cmd_get_quick_access_items':
-            return [] as T;
         case 'cmd_delete_file':
             await trashWebFile(Number(args.messageId));
             return true as T;
@@ -530,12 +516,6 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
             return true as T;
         case 'cmd_permanent_delete_file':
             await deleteWebFile(Number(args.messageId));
-            return true as T;
-        case 'cmd_toggle_star':
-            await updateWebFile(Number(args.messageId), (record) => ({
-                ...record,
-                starred: typeof args.starred === 'boolean' ? args.starred : !record.starred,
-            }));
             return true as T;
         case 'cmd_set_tags':
             await updateWebFile(Number(args.messageId), (record) => ({
@@ -556,12 +536,6 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
                 (args.messageIds as number[] | undefined) || [],
                 (args.targetFolderId as number | null | undefined) ?? null
             );
-            return true as T;
-        case 'cmd_toggle_pin':
-            await updateWebFile(Number(args.messageId), (record) => ({
-                ...record,
-                pinned: typeof args.pinned === 'boolean' ? args.pinned : !record.pinned,
-            }));
             return true as T;
         case 'cmd_toggle_lock':
             await updateWebFile(Number(args.messageId), (record) => ({
@@ -588,8 +562,6 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
             return await searchWebFiles(String(args.query || '')) as T;
         case 'cmd_get_trash_files':
             return await getWebTrashFiles(String(args.query || '')) as T;
-        case 'cmd_get_starred_files':
-            return await getWebStarredFiles(String(args.query || '')) as T;
         case 'cmd_get_activity_items':
         case 'cmd_get_cleanup_suggestions':
         case 'cmd_get_file_versions':
@@ -642,10 +614,6 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
             return await telegramGetFiles((args.folderId as number | null | undefined) ?? null) as T;
         case 'cmd_get_recent_items':
             return await telegramGetRecentItems(String(args.query || '')) as T;
-        case 'cmd_get_quick_access_items':
-            return await telegramGetQuickAccessItems(String(args.query || '')) as T;
-        case 'cmd_get_starred_files':
-            return await telegramGetStarredFiles(String(args.query || '')) as T;
         case 'cmd_get_trash_files':
             return await telegramGetTrashFiles(String(args.query || ''), typeof args.folderId === 'number' ? args.folderId : null) as T;
         case 'cmd_search_global':
@@ -703,18 +671,6 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
                 return await telegramPermanentlyDeleteFolder(Number(args.messageId)) as T;
             }
             return await telegramPermanentlyDeleteFile(Number(args.messageId)) as T;
-        case 'cmd_toggle_star':
-            return await telegramToggleStarItem(
-                Number(args.messageId),
-                args.itemType === 'folder' ? 'folder' : 'file',
-                typeof args.starred === 'boolean' ? args.starred : undefined
-            ) as T;
-        case 'cmd_toggle_pin':
-            return await telegramTogglePinItem(
-                Number(args.messageId),
-                args.itemType === 'folder' ? 'folder' : 'file',
-                typeof args.pinned === 'boolean' ? args.pinned : undefined
-            ) as T;
         case 'cmd_toggle_lock':
             return await telegramToggleLockItem(
                 Number(args.messageId),
@@ -838,8 +794,6 @@ function toTelegramFile(record: WebFileRecord): TelegramFile {
         mime_type: record.mime_type,
         file_ext: record.file_ext,
         tags: record.tags || [],
-        starred: record.starred || false,
-        pinned: record.pinned || false,
         color: record.color,
         locked: record.locked || false,
         protected: record.protected || false,
@@ -951,15 +905,6 @@ async function getWebTrashFiles(query: string): Promise<TelegramFile[]> {
         .map(toTelegramFile);
 }
 
-async function getWebStarredFiles(query: string): Promise<TelegramFile[]> {
-    const normalized = query.trim().toLowerCase();
-    const records = await getAllWebFiles();
-    return records
-        .filter((record) => record.starred && !record.trashed)
-        .filter((record) => !normalized || record.name.toLowerCase().includes(normalized))
-        .map(toTelegramFile);
-}
-
 async function moveWebFiles(messageIds: number[], targetFolderId: number | null): Promise<void> {
     for (const id of messageIds) {
         const record = await getWebFile(Number(id));
@@ -1018,7 +963,6 @@ async function getWebDriveStats(): Promise<DriveStats> {
         totalFiles: records.length,
         activeFiles: active.length,
         trashedFiles: trashed.length,
-        starredFiles: active.filter((record) => record.starred).length,
         duplicateFiles: 0,
         missingFiles: 0,
         totalBytes: records.reduce((sum, record) => sum + record.size, 0),

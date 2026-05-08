@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.13] - 2026-05-08
+
+### Removed Pin And Star
+
+- Removed Starred and Quick Access from the sidebar and drive views.
+- Removed Star and Pin actions from the context menu and bulk toolbar.
+- Removed starred badges, search chip, analytics metric, and command handlers from the active app flow.
+- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.13.
+
 ## [1.1.12] - 2026-05-08
 
 ### Quick Access Tree Fix

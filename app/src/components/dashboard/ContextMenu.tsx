@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Copy, Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, Star, RotateCcw, Tag, Shield, ShieldCheck, ShieldOff, Pin, History, Lock, UnlockKeyhole, Combine } from 'lucide-react';
+import { Copy, Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, RotateCcw, Tag, Shield, ShieldCheck, ShieldOff, History, Lock, UnlockKeyhole, Combine } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { isMediaFile, isPdfFile } from '../../utils';
 
@@ -11,12 +11,10 @@ interface ContextMenuProps {
     onDownload: () => void;
     onDelete: () => void;
     onPreview: () => void;
-    onToggleStar?: () => void;
     onRestore?: () => void;
     onEditTags?: () => void;
     onVerify?: () => void;
     onRename?: () => void;
-    onTogglePin?: () => void;
     onSetFolderColor?: (color: string) => void;
     onShowVersions?: () => void;
     onCopy?: () => void;
@@ -25,7 +23,7 @@ interface ContextMenuProps {
     onToggleProtection?: () => void;
 }
 
-export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onToggleStar, onRestore, onEditTags, onVerify, onRename, onTogglePin, onSetFolderColor, onShowVersions, onCopy, onMergeFolder, onToggleLock, onToggleProtection }: ContextMenuProps) {
+export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onRestore, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMergeFolder, onToggleLock, onToggleProtection }: ContextMenuProps) {
     const [adjustedPos, setAdjustedPos] = useState({ x, y });
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -106,20 +104,6 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
                 <button onClick={onDownload} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
                     <HardDrive className="w-4 h-4 text-green-500" />
                     Download
-                </button>
-            )}
-
-            {onToggleStar && (
-                <button onClick={onToggleStar} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
-                    <Star className={`w-4 h-4 ${file.starred ? 'text-yellow-400 fill-yellow-400' : 'text-yellow-400'}`} />
-                    {file.starred ? 'Unstar' : 'Star'}
-                </button>
-            )}
-
-            {onTogglePin && (
-                <button onClick={onTogglePin} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
-                    <Pin className={`w-4 h-4 ${file.pinned ? 'text-telegram-primary fill-telegram-primary' : 'text-telegram-primary'}`} />
-                    {file.pinned ? 'Unpin' : 'Pin'}
                 </button>
             )}
 
