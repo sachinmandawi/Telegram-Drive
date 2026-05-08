@@ -1,12 +1,13 @@
-import { FolderPlus, Upload } from 'lucide-react';
+import { NewMenu } from './NewMenu';
 
 interface EmptyStateProps {
     onUpload: () => void;
     onUploadFolder?: () => void;
     onCreateFolder?: () => void;
+    currentPath?: string;
 }
 
-export function EmptyState({ onUpload, onUploadFolder, onCreateFolder }: EmptyStateProps) {
+export function EmptyState({ onUpload, onUploadFolder, onCreateFolder, currentPath }: EmptyStateProps) {
     return (
         <div className="flex flex-col items-center justify-center py-20 px-8 text-center">
             {/* Custom SVG Illustration */}
@@ -58,31 +59,14 @@ export function EmptyState({ onUpload, onUploadFolder, onCreateFolder }: EmptySt
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-3">
-                <button
-                    onClick={onUpload}
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-telegram-primary text-black font-medium rounded-xl hover:bg-telegram-primary/90 transition-all hover:scale-105 shadow-lg shadow-telegram-primary/20"
-                >
-                    <Upload className="w-5 h-5" />
-                    Upload Files
-                </button>
-                {onUploadFolder && (
-                    <button
-                        onClick={onUploadFolder}
-                        className="inline-flex items-center gap-2 px-6 py-3 bg-telegram-hover text-telegram-text border border-telegram-border font-medium rounded-xl hover:border-telegram-primary hover:text-telegram-primary transition-all"
-                    >
-                        <Upload className="w-5 h-5" />
-                        Upload Folder
-                    </button>
-                )}
-                {onCreateFolder && (
-                    <button
-                        onClick={onCreateFolder}
-                        className="inline-flex items-center gap-2 px-6 py-3 bg-telegram-hover text-telegram-text border border-telegram-border font-medium rounded-xl hover:border-telegram-primary hover:text-telegram-primary transition-all"
-                    >
-                        <FolderPlus className="w-5 h-5" />
-                        Create Folder
-                    </button>
-                )}
+                <NewMenu
+                    onUpload={onUpload}
+                    onUploadFolder={onUploadFolder}
+                    onCreateFolder={onCreateFolder}
+                    targetLabel={currentPath}
+                    variant="empty"
+                    align="left"
+                />
             </div>
 
             <p className="text-xs text-telegram-subtext/50 mt-6">

@@ -5,9 +5,11 @@ interface UploadQueueProps {
     onClearFinished: () => void;
     onCancelAll: () => void;
     onRetryFailed: () => void;
+    onRetryItem?: (id: string) => void;
+    onRemoveItem?: (id: string) => void;
 }
 
-export function UploadQueue({ items, onClearFinished, onCancelAll, onRetryFailed }: UploadQueueProps) {
+export function UploadQueue({ items, onClearFinished, onCancelAll, onRetryFailed, onRetryItem, onRemoveItem }: UploadQueueProps) {
     if (items.length === 0) return null;
 
     const hasPendingOrActive = items.some(i => i.status === 'pending' || i.status === 'uploading');
@@ -60,6 +62,16 @@ export function UploadQueue({ items, onClearFinished, onCancelAll, onRetryFailed
                         {item.status === 'error' && item.error && (
                             <div className="pl-5 text-[11px] leading-snug text-red-300 break-words" title={item.error}>
                                 {item.error}
+                            </div>
+                        )}
+                        {(item.status === 'error' || item.status === 'cancelled' || item.status === 'success') && (
+                            <div className="flex justify-end gap-2 pl-5">
+                                {(item.status === 'error' || item.status === 'cancelled') && onRetryItem && (
+                                    <button onClick={() => onRetryItem(item.id)} className="text-[11px] text-telegram-primary hover:text-telegram-text">Retry</button>
+                                )}
+                                {onRemoveItem && (
+                                    <button onClick={() => onRemoveItem(item.id)} className="text-[11px] text-telegram-subtext hover:text-red-300">Remove</button>
+                                )}
                             </div>
                         )}
                     </div>

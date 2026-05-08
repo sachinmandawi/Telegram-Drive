@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { QueueItem } from '../types';
 import { useFileDrop } from './useFileDrop';
 import { AppStore, invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime, listenEvent, openTauriFileDialog, uploadBrowserFile } from '../platform';
+import { friendlyDriveError } from '../utils';
 
 interface ProgressPayload {
     id: string;
@@ -15,7 +16,7 @@ interface BrowserUploadEntry {
     folderId: number | null;
 }
 
-export function useFileUpload(activeFolderId: number | null, store: AppStore | null) {
+export function useFileUpload(activeFolderId: number | null, store: AppStore | null, targetLabel?: string) {
     const queryClient = useQueryClient();
     const [uploadQueue, setUploadQueue] = useState<QueueItem[]>([]);
     const [processing, setProcessing] = useState(false);
@@ -104,8 +105,9 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
             }
         } catch (e) {
             if (!cancelledRef.current.has(item.id)) {
-                setUploadQueue(q => q.map(i => i.id === item.id ? { ...i, status: 'error', error: String(e) } : i));
-                toast.error(`Upload failed for ${item.path.split('/').pop()}: ${e}`);
+                const message = friendlyDriveError(e);
+                setUploadQueue(q => q.map(i => i.id === item.id ? { ...i, status: 'error', error: message } : i));
+                toast.error(`Upload failed for ${item.path.split('/').pop()}: ${message}`);
             } else {
                 cancelledRef.current.delete(item.id);
             }
@@ -125,7 +127,7 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
             status: 'pending'
         }));
         setUploadQueue(prev => [...prev, ...newItems]);
-        toast.info(`Queued ${entries.length} file${entries.length === 1 ? '' : 's'} for upload`);
+        toast.info(`Queued ${entries.length} file${entries.length === 1 ? '' : 's'}${targetLabel ? ` to ${targetLabel}` : ''}`);
     };
 
     const queueFiles = (files: File[], folderIdOverride: number | null = activeFolderId) => {
@@ -144,15 +146,15 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
                         status: 'pending'
                     }));
                     setUploadQueue(prev => [...prev, ...newItems]);
-                    toast.info(`Queued ${paths.length} files for upload`);
+                    toast.info(`Queued ${paths.length} files${targetLabel ? ` to ${targetLabel}` : ''}`);
                 }
                 return;
             }
 
             const files = await pickBrowserFiles();
             queueFiles(files);
-        } catch {
-            toast.error("Failed to open file dialog");
+        } catch (e) {
+            toast.error(`Failed to open file dialog: ${friendlyDriveError(e)}`);
         }
     };
 
@@ -181,6 +183,19 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
         toast.info('Failed uploads queued again');
     };
 
+    const retryItem = (id: string) => {
+        setUploadQueue(q => q.map(i => (
+            i.id === id
+                ? { ...i, status: 'pending' as const, error: undefined, progress: 0 }
+                : i
+        )));
+    };
+
+    const removeItem = (id: string) => {
+        cancelledRef.current.add(id);
+        setUploadQueue(q => q.filter(i => i.id !== id));
+    };
+
     const { isDragging } = useFileDrop();
 
     return {
@@ -192,6 +207,8 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
         queueFileEntries,
         cancelAll,
         retryFailed,
+        retryItem,
+        removeItem,
         isDragging
     };
 }

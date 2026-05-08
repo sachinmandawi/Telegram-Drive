@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.15] - 2026-05-08
+
+### Google Drive Flow Upgrade
+
+- Added a unified `+ New` menu for folder creation, file upload, and folder upload across the toolbar, empty state, grid upload tile, and list upload row.
+- Added current upload target labels, clearer sync status, per-file upload retry/remove controls, and friendlier repair-focused error messages.
+- Added a searchable folder-tree Move dialog with keep both, merge, replace, skip conflict choices.
+- Added a Details panel with item path, metadata, security state, activity history, Repair Index, and Lock Protected actions.
+- Improved search results with folder matches, path labels, open-location highlighting, and safer restore prompts when original folders are missing.
+- Added browser ZIP download for current folder files and a five-minute protected-item unlock timeout.
+- Bumped app, Tauri, and Saved Messages manifest versions to 1.1.15.
+
 ## [1.1.14] - 2026-05-08
 
 ### Removed Gallery Recent Media Views

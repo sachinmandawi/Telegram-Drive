@@ -14,12 +14,14 @@ interface FileListItemProps {
     onPreview: (file: TelegramFile) => void;
     onDownload: (id: number, name: string) => void;
     onDelete: (id: number) => void;
+    pathLabel?: string;
+    highlighted?: boolean;
 }
 
 export function FileListItem({
     file, selectedIds, onFileClick, handleContextMenu,
     onDragStart, onDragEnd, onDrop,
-    onPreview, onDownload, onDelete
+    onPreview, onDownload, onDelete, pathLabel, highlighted = false
 }: FileListItemProps) {
     const [isDragOver, setIsDragOver] = useState(false);
     const isFolder = file.type === 'folder';
@@ -60,7 +62,7 @@ export function FileListItem({
                 }
             }}
             className={`group grid grid-cols-[2rem_2fr_6rem_8rem] gap-4 items-center px-4 py-3 rounded-lg cursor-pointer border border-transparent transition-all hover:bg-telegram-hover 
-                ${selectedIds.includes(file.id) ? 'bg-telegram-primary/10 border-telegram-primary/20' : ''}
+                ${selectedIds.includes(file.id) || highlighted ? 'bg-telegram-primary/10 border-telegram-primary/20' : ''}
                 ${isDragOver ? 'ring-2 ring-telegram-primary bg-telegram-primary/20' : ''}
             `}
         >
@@ -70,7 +72,8 @@ export function FileListItem({
             <div className="truncate text-sm text-telegram-text font-medium relative pr-8">
                 {file.locked && <Lock className="inline w-3 h-3 mr-1 text-amber-400 align-[-1px]" />}
                 {file.protected && <Shield className="inline w-3 h-3 mr-1 text-telegram-primary align-[-1px]" />}
-                {file.name}
+                <span>{file.name}</span>
+                {pathLabel && <div className="mt-0.5 truncate text-[11px] font-normal text-telegram-subtext">{pathLabel}</div>}
                 {!isFolder && file.tags && file.tags.length > 0 && (
                     <span className="ml-2 inline-flex max-w-[14rem] gap-1 align-middle">
                         {file.tags.slice(0, 3).map((tag) => (

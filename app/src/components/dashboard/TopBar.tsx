@@ -1,5 +1,6 @@
-import { CheckSquare, FolderPlus, HardDrive, LayoutGrid, Sun, Moon, Wrench, SlidersHorizontal, Tag, X } from 'lucide-react';
+import { CheckSquare, HardDrive, Info, LayoutGrid, Sun, Moon, Wrench, SlidersHorizontal, Tag, X } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
+import { NewMenu } from './NewMenu';
 
 interface TopBarProps {
     currentFolderName: string;
@@ -11,6 +12,8 @@ interface TopBarProps {
     selectableCount: number;
     onShowMoveModal: () => void;
     onCreateFolder?: () => void;
+    onManualUpload?: () => void;
+    onManualFolderUpload?: () => void;
     onBulkDownload: () => void;
     onBulkDelete: () => void;
     onBulkRestore?: () => void;
@@ -26,13 +29,20 @@ interface TopBarProps {
     savedMessagesOnly?: boolean;
     onRepairDrive?: () => void;
     isRepairing?: boolean;
+    currentPathLabel?: string;
+    syncStatusText?: string;
+    onOpenDetails?: () => void;
+    detailsOpen?: boolean;
+    unlockedCount?: number;
+    onLockProtected?: () => void;
 }
 
 export function TopBar({
     currentFolderName, selectedIds, onShowMoveModal, onBulkDownload, onBulkDelete,
     onDownloadFolder, onBulkTag, onOpenTools, viewMode, setViewMode, searchTerm, onSearchChange, savedMessagesOnly = false,
     onRepairDrive, isRepairing = false, onSelectAll, onClearSelection, allSelected, selectableCount, breadcrumbs, onBulkRestore,
-    searchScope, onSearchScopeChange, onCreateFolder
+    searchScope, onSearchScopeChange, onCreateFolder, onManualUpload, onManualFolderUpload, currentPathLabel, syncStatusText,
+    onOpenDetails, detailsOpen = false, unlockedCount = 0, onLockProtected
 }: TopBarProps) {
     const { theme, toggleTheme } = useTheme();
 
@@ -52,6 +62,9 @@ export function TopBar({
                             {index < items.length - 1 && <span className="mx-2">/</span>}
                         </span>
                     ))}
+                </div>
+                <div className="hidden min-w-[10rem] max-w-[18rem] truncate text-[11px] text-telegram-subtext lg:block" title={syncStatusText || currentPathLabel}>
+                    {syncStatusText || currentPathLabel}
                 </div>
             </div>
 
@@ -97,21 +110,22 @@ export function TopBar({
                     </div>
                 )}
 
+                {!savedMessagesOnly && (
+                    <NewMenu
+                        onUpload={onManualUpload}
+                        onUploadFolder={onManualFolderUpload}
+                        onCreateFolder={onCreateFolder}
+                        targetLabel={currentPathLabel}
+                        variant="toolbar"
+                    />
+                )}
+
                 <button onClick={onDownloadFolder} className="p-2 hover:bg-telegram-hover rounded-md text-telegram-subtext hover:text-telegram-text transition group relative" title="Download Folder">
                     <HardDrive className="w-5 h-5" />
                     <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-[10px] bg-telegram-surface border border-telegram-border px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
                         Download All Files
                     </span>
                 </button>
-
-                {onCreateFolder && (
-                    <button onClick={onCreateFolder} className="p-2 hover:bg-telegram-hover rounded-md text-telegram-subtext hover:text-telegram-text transition group relative" title="Create Folder">
-                        <FolderPlus className="w-5 h-5" />
-                        <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-[10px] bg-telegram-surface border border-telegram-border px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
-                            Create Folder
-                        </span>
-                    </button>
-                )}
 
                 {onRepairDrive && (
                     <button
@@ -127,6 +141,19 @@ export function TopBar({
                     </button>
                 )}
 
+                {unlockedCount > 0 && onLockProtected && (
+                    <button
+                        onClick={onLockProtected}
+                        className="p-2 hover:bg-telegram-hover rounded-md text-telegram-subtext hover:text-telegram-text transition group relative"
+                        title="Lock protected items"
+                    >
+                        <Wrench className="w-5 h-5 text-amber-400" />
+                        <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-[10px] bg-telegram-surface border border-telegram-border px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
+                            Lock Protected
+                        </span>
+                    </button>
+                )}
+
                 <button
                     onClick={onOpenTools}
                     className="p-2 hover:bg-telegram-hover rounded-md text-telegram-subtext hover:text-telegram-text transition group relative"
@@ -137,6 +164,19 @@ export function TopBar({
                         Drive Tools
                     </span>
                 </button>
+
+                {onOpenDetails && (
+                    <button
+                        onClick={onOpenDetails}
+                        className={`p-2 hover:bg-telegram-hover rounded-md transition group relative ${detailsOpen ? 'text-telegram-primary' : 'text-telegram-subtext hover:text-telegram-text'}`}
+                        title="Details"
+                    >
+                        <Info className="w-5 h-5" />
+                        <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-[10px] bg-telegram-surface border border-telegram-border px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
+                            Details
+                        </span>
+                    </button>
+                )}
 
                 <button
                     onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
