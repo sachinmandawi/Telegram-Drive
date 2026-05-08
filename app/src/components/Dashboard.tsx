@@ -20,6 +20,7 @@ import { ExternalDropBlocker } from './dashboard/ExternalDropBlocker';
 import { PdfViewer } from './dashboard/PdfViewer';
 import { DriveToolsModal } from './dashboard/DriveToolsModal';
 import { TagEditorModal } from './dashboard/TagEditorModal';
+import { FloatingCreateButton } from './dashboard/FloatingCreateButton';
 
 // Hooks
 import { useTelegramConnection } from '../hooks/useTelegramConnection';
@@ -76,6 +77,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
     const [highlightedId, setHighlightedId] = useState<number | null>(null);
     const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+    const [createMenuOpen, setCreateMenuOpen] = useState(false);
 
     useEffect(() => {
         if (store) {
@@ -90,6 +92,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             store.set('viewMode', viewMode).then(() => store.save());
         }
     }, [store, viewMode]);
+
+    useEffect(() => {
+        if (driveView !== 'files' && createMenuOpen) {
+            setCreateMenuOpen(false);
+        }
+    }, [createMenuOpen, driveView]);
 
 
     const { data: allFiles = [], isLoading, error } = useQuery({
@@ -1097,6 +1105,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }, [folders, showSearchPaths]);
 
     const handleMobileBack = useCallback(() => {
+        if (createMenuOpen) {
+            setCreateMenuOpen(false);
+            return true;
+        }
         if (tagTarget) {
             setTagTarget(null);
             return true;
@@ -1154,6 +1166,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }, [
         activeFolderId,
         activeTrashFolderId,
+        createMenuOpen,
         driveView,
         folders,
         handleOpenFolderId,
@@ -1371,6 +1384,16 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     highlightedId={highlightedId}
                 />
             </main>
+
+            {driveView === 'files' && (
+                <FloatingCreateButton
+                    open={createMenuOpen}
+                    onOpenChange={setCreateMenuOpen}
+                    onUploadFiles={handleManualUpload}
+                    onUploadFolder={handleManualFolderUpload}
+                    onCreateFolder={handleCreateFolderHere}
+                />
+            )}
 
             {previewFile && (
                 <PreviewModal

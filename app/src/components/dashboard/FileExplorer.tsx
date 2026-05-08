@@ -120,17 +120,15 @@ export function FileExplorer({
 
     const gridRows = useMemo(() => {
         const rows: (TelegramFile | 'upload')[][] = [];
-        const itemsWithUpload: (TelegramFile | 'upload')[] = allowUpload ? [...sortedFiles, 'upload'] : [...sortedFiles];
+        const itemsWithUpload: (TelegramFile | 'upload')[] = [...sortedFiles];
         for (let i = 0; i < itemsWithUpload.length; i += columns) {
             rows.push(itemsWithUpload.slice(i, i + columns));
         }
         return rows;
-    }, [sortedFiles, columns, allowUpload]);
+    }, [sortedFiles, columns]);
 
 
-    const listItems = useMemo(() => {
-        return allowUpload ? [...sortedFiles, 'upload' as const] : sortedFiles;
-    }, [sortedFiles, allowUpload]);
+    const listItems = useMemo<(TelegramFile | 'upload')[]>(() => [...sortedFiles], [sortedFiles]);
 
 
     const gridVirtualizer = useVirtualizer({
