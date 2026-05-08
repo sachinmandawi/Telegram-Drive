@@ -123,9 +123,9 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
                         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
                     </div>
                 ) : (
-                    <div className="absolute inset-0 flex items-center justify-center p-4">
+                    <div className="absolute inset-0 flex items-center justify-center p-3 sm:p-4">
                         {isFolder ? (
-                            <Folder className="w-12 h-12" style={{ color: file.color || undefined }} />
+                            <Folder className="h-10 w-10 sm:h-12 sm:w-12" style={{ color: file.color || undefined }} />
                         ) : thumbnailLoading && isImageFile(file) ? (
                             <div className="w-8 h-8 border-2 border-telegram-primary/30 border-t-telegram-primary rounded-full animate-spin" />
                         ) : (
@@ -170,8 +170,8 @@ export function FileCard({ file, onDelete, onDownload, onPreview, isSelected, on
                 )}
 
                 {/* File info overlay at bottom */}
-                <div className={`absolute bottom-0 left-0 right-0 p-3 ${thumbnail ? 'text-white' : 'text-telegram-text'}`}>
-                    <h3 className="text-sm font-medium truncate w-full" title={file.name}>{file.name}</h3>
+                <div className={`absolute bottom-0 left-0 right-0 p-2.5 sm:p-3 ${thumbnail ? 'text-white' : 'text-telegram-text'}`}>
+                    <h3 className="w-full truncate text-xs font-medium sm:text-sm" title={file.name}>{file.name}</h3>
                     <p className={`text-xs mt-0.5 ${thumbnail ? 'text-white/70' : 'text-telegram-subtext'}`}>{file.sizeStr}</p>
                     {pathLabel && (
                         <p className={`text-[11px] mt-0.5 truncate ${thumbnail ? 'text-white/70' : 'text-telegram-subtext/80'}`} title={pathLabel}>

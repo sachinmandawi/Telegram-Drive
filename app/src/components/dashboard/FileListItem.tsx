@@ -61,7 +61,7 @@ export function FileListItem({
                     onDrop(e, file.id);
                 }
             }}
-            className={`group grid grid-cols-[2rem_2fr_6rem_8rem] gap-4 items-center px-4 py-3 rounded-lg cursor-pointer border border-transparent transition-all hover:bg-telegram-hover 
+            className={`group grid grid-cols-[2rem_minmax(0,1fr)_5rem] items-center gap-2 rounded-lg border border-transparent px-3 py-3 cursor-pointer transition-all hover:bg-telegram-hover md:grid-cols-[2rem_2fr_6rem_8rem] md:gap-4 md:px-4 
                 ${selectedIds.includes(file.id) || highlighted ? 'bg-telegram-primary/10 border-telegram-primary/20' : ''}
                 ${isDragOver ? 'ring-2 ring-telegram-primary bg-telegram-primary/20' : ''}
             `}
@@ -88,7 +88,7 @@ export function FileListItem({
                     </span>
                 )}
                 {/* List Actions */}
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center bg-telegram-surface border border-telegram-border shadow-lg rounded px-1">
+                <div className="absolute right-0 top-1/2 flex -translate-y-1/2 items-center rounded border border-telegram-border bg-telegram-surface px-1 opacity-100 shadow-lg sm:opacity-0 sm:group-hover:opacity-100">
                     <button onClick={(e) => { e.stopPropagation(); onPreview(file) }} className="p-1 hover:text-telegram-text text-telegram-subtext" title="Preview"><Eye className="w-4 h-4" /></button>
                     {!isFolder && (
                         <button onClick={(e) => { e.stopPropagation(); onDownload(file.id, file.name) }} className="p-1 hover:text-telegram-text text-telegram-subtext" title="Download"><HardDrive className="w-4 h-4" /></button>
@@ -97,7 +97,7 @@ export function FileListItem({
                 </div>
             </div>
             <div className="text-right text-xs text-telegram-subtext truncate">{file.sizeStr}</div>
-            <div className="text-right text-xs text-telegram-subtext font-mono opacity-50 truncate">{file.created_at || '-'}</div>
+            <div className="hidden truncate text-right font-mono text-xs text-telegram-subtext opacity-50 md:block">{file.created_at || '-'}</div>
         </div>
     );
 }

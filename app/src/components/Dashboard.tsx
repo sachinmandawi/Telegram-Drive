@@ -75,6 +75,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const [tagTarget, setTagTarget] = useState<TelegramFile | 'bulk' | null>(null);
     const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
     const [highlightedId, setHighlightedId] = useState<number | null>(null);
+    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
     useEffect(() => {
         if (store) {
@@ -1097,7 +1098,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     return (
         <div
-            className="flex h-screen w-full overflow-hidden bg-telegram-bg relative"
+            className="relative flex h-[100dvh] min-h-screen w-full overflow-hidden bg-telegram-bg"
             onClick={() => setSelectedIds([])}
             onDragOver={handleRootDragOver}
             onDragEnter={handleRootDragEnter}
@@ -1165,6 +1166,18 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 )}
             </AnimatePresence>
 
+            {mobileSidebarOpen && (
+                <button
+                    type="button"
+                    aria-label="Close navigation"
+                    className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setMobileSidebarOpen(false);
+                    }}
+                />
+            )}
+
             <Sidebar
                 folders={folders}
                 activeFolderId={activeFolderId}
@@ -1187,9 +1200,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 onLogout={handleLogout}
                 bandwidth={bandwidth || null}
                 connectionLabel={isDesktopRuntime ? undefined : savedMessagesDefault ? 'Telegram Saved Messages' : 'Browser storage ready'}
+                mobileOpen={mobileSidebarOpen}
+                onMobileClose={() => setMobileSidebarOpen(false)}
             />
 
-            <main className="flex-1 flex flex-col" onClick={(e) => { if (e.target === e.currentTarget) setSelectedIds([]); }}>
+            <main className="flex min-w-0 flex-1 flex-col" onClick={(e) => { if (e.target === e.currentTarget) setSelectedIds([]); }}>
                 <TopBar
                     currentFolderName={currentFolderName}
                     breadcrumbs={breadcrumbs}
@@ -1216,9 +1231,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onRepairDrive={savedMessagesDefault ? handleRepairDrive : undefined}
                     isRepairing={isRepairingDrive}
                     syncStatusText={syncStatusText}
+                    onOpenSidebar={() => setMobileSidebarOpen(true)}
                 />
                 {searchTerm.length > 2 && (
-                    <div className="px-6 pt-4 pb-0">
+                    <div className="px-3 pt-3 pb-0 sm:px-4 md:px-6 md:pt-4">
                         <h2 className="text-sm font-medium text-telegram-subtext">
                             Search Results for <span className="text-telegram-primary">"{searchTerm}"</span>
                         </h2>

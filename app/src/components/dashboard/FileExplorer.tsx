@@ -56,10 +56,11 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
         const updateColumns = () => {
             const width = containerRef.current?.clientWidth || 800;
             setContainerWidth(width);
-            if (width < 640) setColumns(2);
-            else if (width < 768) setColumns(3);
-            else if (width < 1024) setColumns(4);
-            else if (width < 1280) setColumns(5);
+            if (width < 360) setColumns(1);
+            else if (width < 700) setColumns(2);
+            else if (width < 920) setColumns(3);
+            else if (width < 1180) setColumns(4);
+            else if (width < 1440) setColumns(5);
             else setColumns(6);
         };
 
@@ -83,9 +84,9 @@ export function FileExplorer({
     const parentRef = useRef<HTMLDivElement>(null);
     const { columns, containerWidth } = useGridColumns(parentRef);
 
-    const GAP = 6;
+    const GAP = containerWidth < 640 ? 8 : 6;
     const cardWidth = (containerWidth - (GAP * (columns - 1))) / columns;
-    const cardHeight = cardWidth * 0.75; // aspect-[4/3]
+    const cardHeight = Math.max(cardWidth * 0.75, containerWidth < 640 ? 150 : 140);
     const rowHeight = Math.max(cardHeight + GAP, 150);
 
     const handleContextMenu = useCallback((e: React.MouseEvent, file: TelegramFile) => {
@@ -170,7 +171,7 @@ export function FileExplorer({
 
     if (loading) {
         return (
-            <div className="flex-1 p-6 flex justify-center items-center text-telegram-subtext flex-col gap-4">
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 p-3 text-telegram-subtext sm:p-4 md:p-6">
                 <div className="w-8 h-8 border-4 border-telegram-primary border-t-transparent rounded-full animate-spin"></div>
                 Loading your files...
             </div>
@@ -178,19 +179,19 @@ export function FileExplorer({
     }
 
     if (error) {
-        return <div className="flex-1 p-6 flex justify-center items-center text-red-400">Error loading files</div>
+        return <div className="flex flex-1 items-center justify-center p-3 text-red-400 sm:p-4 md:p-6">Error loading files</div>
     }
 
     if (files.length === 0) {
         if (!allowUpload) {
             return (
-                <div className="flex-1 p-6 flex justify-center items-center text-telegram-subtext">
+                <div className="flex flex-1 items-center justify-center p-3 text-telegram-subtext sm:p-4 md:p-6">
                     No files here yet.
                 </div>
             );
         }
         return (
-            <div className="flex-1 p-6 overflow-auto">
+            <div className="flex-1 overflow-auto p-3 sm:p-4 md:p-6">
                 <EmptyState onUpload={onManualUpload} onUploadFolder={onManualFolderUpload} onCreateFolder={onCreateFolder} />
             </div>
         );
@@ -199,7 +200,7 @@ export function FileExplorer({
     return (
         <div
             ref={parentRef}
-            className="flex-1 p-6 overflow-auto custom-scrollbar"
+            className="custom-scrollbar flex-1 overflow-auto p-3 sm:p-4 md:p-6"
             onClick={(e) => {
                 if (e.target === e.currentTarget) onSelectionClear();
             }}
@@ -207,7 +208,7 @@ export function FileExplorer({
             {viewMode === 'grid' ? (
                 <>
 
-                    <div className="flex items-center gap-2 mb-4 text-xs text-telegram-subtext">
+                    <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs text-telegram-subtext md:mb-4 md:gap-2">
                         <span>Sort by:</span>
                         <button
                             onClick={() => handleSort('name')}
@@ -252,13 +253,13 @@ export function FileExplorer({
                                             return (
                                                 <div
                                                     key="upload"
-                                                    className="border-2 border-dashed border-telegram-border rounded-xl flex flex-col items-center justify-center overflow-hidden text-telegram-subtext hover:border-telegram-primary transition-all group p-3 gap-1.5"
+                                                    className="group flex flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border-2 border-dashed border-telegram-border p-2 text-telegram-subtext transition-all hover:border-telegram-primary sm:p-3"
                                                     style={{ height: `${cardHeight}px` }}
                                                 >
                                                     <Plus className="w-6 h-6 mb-1 shrink-0 group-hover:scale-110 transition-transform" />
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); onManualUpload(); }}
-                                                        className="text-sm font-medium hover:text-telegram-primary"
+                                                        className="text-xs font-medium hover:text-telegram-primary sm:text-sm"
                                                     >
                                                         Upload Files
                                                     </button>
@@ -309,9 +310,9 @@ export function FileExplorer({
                     </div>
                 </>
             ) : (
-                <div className="flex flex-col w-full">
+                <div className="flex w-full flex-col">
                     {/* List Header */}
-                    <div className="grid grid-cols-[2rem_2fr_6rem_8rem] gap-4 px-4 py-2 text-xs font-semibold text-telegram-subtext border-b border-telegram-border mb-2 select-none items-center">
+                    <div className="mb-2 grid grid-cols-[2rem_minmax(0,1fr)_5rem] items-center gap-2 border-b border-telegram-border px-3 py-2 text-xs font-semibold text-telegram-subtext select-none md:grid-cols-[2rem_2fr_6rem_8rem] md:gap-4 md:px-4">
                         <div className="text-center">#</div>
                         <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-telegram-text transition-colors">
                             Name <SortIcon field="name" />
@@ -319,7 +320,7 @@ export function FileExplorer({
                         <button onClick={() => handleSort('size')} className="flex items-center gap-1 justify-end hover:text-telegram-text transition-colors">
                             Size <SortIcon field="size" />
                         </button>
-                        <button onClick={() => handleSort('date')} className="flex items-center gap-1 justify-end hover:text-telegram-text transition-colors">
+                        <button onClick={() => handleSort('date')} className="hidden items-center justify-end gap-1 transition-colors hover:text-telegram-text md:flex">
                             Date <SortIcon field="date" />
                         </button>
                     </div>
@@ -338,7 +339,7 @@ export function FileExplorer({
                                         className="absolute top-0 left-0 w-full"
                                         style={{ transform: `translateY(${virtualItem.start}px)` }}
                                     >
-                                        <div className={`grid gap-2 ${onManualFolderUpload || onCreateFolder ? 'grid-cols-3' : 'grid-cols-1'}`}>
+                                        <div className={`grid gap-2 ${onManualFolderUpload || onCreateFolder ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-1'}`}>
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); onManualUpload(); }}
                                                 className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer border border-dashed border-telegram-border text-telegram-subtext hover:text-telegram-text hover:bg-telegram-hover w-full"

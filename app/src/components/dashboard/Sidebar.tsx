@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { HardDrive, Folder, Plus, RefreshCw, LogOut, Trash2 } from 'lucide-react';
+import { HardDrive, Folder, Plus, RefreshCw, LogOut, Trash2, X } from 'lucide-react';
 import { SidebarItem } from './SidebarItem';
 import { BandwidthWidget } from './BandwidthWidget';
 import { getPublicAssetPath } from '../../platform';
@@ -21,12 +21,14 @@ interface SidebarProps {
     savedMessagesOnly?: boolean;
     activeDriveView?: DriveView;
     onDriveViewChange?: (view: DriveView) => void;
+    mobileOpen?: boolean;
+    onMobileClose?: () => void;
 }
 
 export function Sidebar({
     folders, activeFolderId, setActiveFolderId, onDrop, onDelete, onCreate,
     isSyncing, isConnected, onSync, onLogout, bandwidth, connectionLabel, savedMessagesOnly = false,
-    activeDriveView = 'files', onDriveViewChange
+    activeDriveView = 'files', onDriveViewChange, mobileOpen = false, onMobileClose
 }: SidebarProps) {
     const logoSrc = getPublicAssetPath('logo.svg');
     const [showNewFolderInput, setShowNewFolderInput] = useState(false);
@@ -46,10 +48,21 @@ export function Sidebar({
     const rootFolders = folders.filter((folder) => (folder.parent_id ?? null) === null);
 
     return (
-        <aside className="w-64 bg-telegram-surface border-r border-telegram-border flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="p-4 flex items-center gap-2">
-                <img src={logoSrc} className="w-8 h-8 drop-shadow-lg" alt="Logo" />
-                <span className="font-bold text-lg text-telegram-text tracking-tight">Telegram Drive</span>
+        <aside
+            className={`fixed inset-y-0 left-0 z-40 flex w-[84vw] max-w-72 flex-col border-r border-telegram-border bg-telegram-surface shadow-2xl transition-transform duration-200 md:static md:z-auto md:w-64 md:max-w-none md:translate-x-0 md:shadow-none ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
+            onClick={e => e.stopPropagation()}
+        >
+            <div className="flex items-center gap-2 px-4 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] md:pt-4">
+                <img src={logoSrc} className="h-8 w-8 shrink-0 drop-shadow-lg" alt="Logo" />
+                <span className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight text-telegram-text">Telegram Drive</span>
+                <button
+                    type="button"
+                    className="rounded-md p-2 text-telegram-subtext transition hover:bg-telegram-hover hover:text-telegram-text md:hidden"
+                    onClick={onMobileClose}
+                    aria-label="Close navigation"
+                >
+                    <X className="h-5 w-5" />
+                </button>
             </div>
 
             {/* Scrollable folder list */}
@@ -61,6 +74,7 @@ export function Sidebar({
                     onClick={() => {
                         onDriveViewChange?.('files');
                         setActiveFolderId(null);
+                        onMobileClose?.();
                     }}
                     onDrop={(e: React.DragEvent) => onDrop(e, null)}
                     folderId={null}
@@ -69,7 +83,10 @@ export function Sidebar({
                     icon={Trash2}
                     label="Trash"
                     active={activeDriveView === 'trash'}
-                    onClick={() => onDriveViewChange?.('trash')}
+                    onClick={() => {
+                        onDriveViewChange?.('trash');
+                        onMobileClose?.();
+                    }}
                     onDrop={() => undefined}
                     folderId={null}
                 />
@@ -82,6 +99,7 @@ export function Sidebar({
                         onClick={() => {
                             onDriveViewChange?.('files');
                             setActiveFolderId(folder.id);
+                            onMobileClose?.();
                         }}
                         onDrop={(e: React.DragEvent) => onDrop(e, folder.id)}
                         onDelete={() => onDelete(folder.id, folder.name)}
@@ -116,7 +134,7 @@ export function Sidebar({
                 )}
             </div>}
 
-            <div className="p-4 border-t border-telegram-border">
+            <div className="border-t border-telegram-border px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 md:pb-4">
                 <div className="flex items-center gap-2 text-telegram-subtext text-xs">
                     <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
                     <span>{connectionLabel || (isConnected ? 'Connected to Telegram' : 'Disconnected from Telegram')}</span>
