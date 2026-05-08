@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.20] - 2026-05-08
+
+### Removed Upload Target Labels
+
+- Removed the visible `To: ...` upload target label from the top toolbar.
+- Removed the visible upload target label from grid upload tiles and the upload queue.
+- Simplified the empty-folder upload message so folder paths no longer appear in the main upload UI.
+
 ## [1.1.19] - 2026-05-08
 
 ### Target Label Visibility Fix

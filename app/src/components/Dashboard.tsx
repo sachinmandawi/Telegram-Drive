@@ -1215,7 +1215,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onOpenTools={() => setShowTools(true)}
                     onRepairDrive={savedMessagesDefault ? handleRepairDrive : undefined}
                     isRepairing={isRepairingDrive}
-                    uploadTargetLabel={uploadTargetLabel}
                     syncStatusText={syncStatusText}
                 />
                 {searchTerm.length > 2 && (
@@ -1259,7 +1258,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onToggleProtection={handleToggleProtection}
                     getItemPath={getDisplayedItemPath}
                     highlightedId={highlightedId}
-                    uploadTargetLabel={uploadTargetLabel}
                 />
             </main>
 

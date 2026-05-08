@@ -9,7 +9,7 @@
     }
   },
   "productName": "Telegram Drive",
-  "version": "1.1.19",
+  "version": "1.1.20",
   "identifier": "com.sachinmandawi.telegramdrive",
   "build": {
     "beforeDevCommand": "npm run dev",

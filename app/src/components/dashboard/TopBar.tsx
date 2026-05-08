@@ -26,7 +26,6 @@ interface TopBarProps {
     savedMessagesOnly?: boolean;
     onRepairDrive?: () => void;
     isRepairing?: boolean;
-    uploadTargetLabel?: string;
     syncStatusText?: string;
 }
 
@@ -34,7 +33,7 @@ export function TopBar({
     currentFolderName, selectedIds, onShowMoveModal, onBulkDownload, onBulkDelete,
     onDownloadFolder, onBulkTag, onOpenTools, viewMode, setViewMode, searchTerm, onSearchChange, savedMessagesOnly = false,
     onRepairDrive, isRepairing = false, onSelectAll, onClearSelection, allSelected, selectableCount, breadcrumbs, onBulkRestore,
-    searchScope, onSearchScopeChange, onCreateFolder, uploadTargetLabel, syncStatusText
+    searchScope, onSearchScopeChange, onCreateFolder, syncStatusText
 }: TopBarProps) {
     const { theme, toggleTheme } = useTheme();
 
@@ -67,14 +66,6 @@ export function TopBar({
                         onChange={(e) => onSearchChange(e.target.value)}
                     />
                 </div>
-                {uploadTargetLabel && (
-                    <div
-                        className="hidden h-8 min-w-0 max-w-[13rem] items-center overflow-hidden rounded-lg border border-telegram-border bg-telegram-hover px-2 text-[11px] leading-none text-telegram-subtext lg:flex"
-                        title={`To: ${uploadTargetLabel}`}
-                    >
-                        <span className="block min-w-0 truncate">To: {uploadTargetLabel}</span>
-                    </div>
-                )}
                 {syncStatusText && (
                     <div
                         className="hidden h-8 shrink-0 items-center rounded-lg border border-telegram-border/80 px-2 text-[11px] leading-none text-telegram-subtext xl:flex"

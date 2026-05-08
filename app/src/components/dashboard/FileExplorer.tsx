@@ -43,7 +43,6 @@ interface FileExplorerProps {
     onToggleProtection?: (file: TelegramFile) => void;
     getItemPath?: (file: TelegramFile) => string | undefined;
     highlightedId?: number | null;
-    uploadTargetLabel?: string;
 }
 
 
@@ -75,12 +74,11 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
 
 export function FileExplorer({
     files, loading, error, viewMode, selectedIds, activeFolderId,
-    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMove, onMergeFolder, onToggleLock, onToggleProtection, getItemPath, highlightedId, uploadTargetLabel
+    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMove, onMergeFolder, onToggleLock, onToggleProtection, getItemPath, highlightedId
 }: FileExplorerProps) {
     const [sortField, setSortField] = useState<SortField>('name');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: TelegramFile } | null>(null);
-    const shortUploadTargetLabel = useMemo(() => shortenTargetLabel(uploadTargetLabel), [uploadTargetLabel]);
 
     const parentRef = useRef<HTMLDivElement>(null);
     const { columns, containerWidth } = useGridColumns(parentRef);
@@ -193,7 +191,7 @@ export function FileExplorer({
         }
         return (
             <div className="flex-1 p-6 overflow-auto">
-                <EmptyState onUpload={onManualUpload} onUploadFolder={onManualFolderUpload} onCreateFolder={onCreateFolder} targetLabel={uploadTargetLabel} />
+                <EmptyState onUpload={onManualUpload} onUploadFolder={onManualFolderUpload} onCreateFolder={onCreateFolder} />
             </div>
         );
     }
@@ -279,14 +277,6 @@ export function FileExplorer({
                                                         >
                                                             Create Folder
                                                         </button>
-                                                    )}
-                                                    {uploadTargetLabel && (
-                                                        <div
-                                                            className="mt-1 flex h-5 w-[90%] items-center justify-center overflow-hidden rounded border border-telegram-border bg-telegram-hover/80 px-2 text-[10px] leading-none text-telegram-subtext"
-                                                            title={`To: ${uploadTargetLabel}`}
-                                                        >
-                                                            <span className="block min-w-0 truncate">To: {shortUploadTargetLabel}</span>
-                                                        </div>
                                                     )}
                                                 </div>
                                             );
@@ -472,10 +462,4 @@ export function FileExplorer({
             )}
         </div>
     )
-}
-
-function shortenTargetLabel(label?: string) {
-    if (!label) return '';
-    const parts = label.split('/').map((part) => part.trim()).filter(Boolean);
-    return parts[parts.length - 1] || label;
 }
