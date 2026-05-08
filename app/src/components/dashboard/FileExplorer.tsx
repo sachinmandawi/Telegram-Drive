@@ -55,8 +55,10 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
 
         const updateColumns = () => {
             const width = containerRef.current?.clientWidth || 800;
+            const isMobileGrid = window.matchMedia('(pointer: coarse), (max-width: 767px)').matches;
             setContainerWidth(width);
-            if (width < 360) setColumns(1);
+            if (isMobileGrid) setColumns(2);
+            else if (width < 420) setColumns(1);
             else if (width < 700) setColumns(2);
             else if (width < 920) setColumns(3);
             else if (width < 1180) setColumns(4);
@@ -67,7 +69,13 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
         updateColumns();
         const observer = new ResizeObserver(updateColumns);
         observer.observe(containerRef.current);
-        return () => observer.disconnect();
+        const mobileGridQuery = window.matchMedia('(pointer: coarse), (max-width: 767px)');
+        mobileGridQuery.addEventListener('change', updateColumns);
+
+        return () => {
+            observer.disconnect();
+            mobileGridQuery.removeEventListener('change', updateColumns);
+        };
     }, [containerRef]);
 
     return { columns, containerWidth };
@@ -84,7 +92,7 @@ export function FileExplorer({
     const parentRef = useRef<HTMLDivElement>(null);
     const { columns, containerWidth } = useGridColumns(parentRef);
 
-    const GAP = containerWidth < 640 ? 8 : 6;
+    const GAP = containerWidth < 640 ? 12 : 6;
     const cardWidth = (containerWidth - (GAP * (columns - 1))) / columns;
     const cardHeight = cardWidth;
     const rowHeight = Math.max(cardHeight + GAP, 150);
