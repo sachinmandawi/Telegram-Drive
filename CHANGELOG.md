@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.21] - 2026-05-08
+
+### Android APK Release Pipeline
+
+- Added an Android build job to the release workflow.
+- The release workflow now initializes the Tauri Android project in CI, installs Android SDK/NDK packages, builds an Android debug APK, and uploads it to the same GitHub Release.
+- Updated release notes to clarify that Android APK assets are debug-signed for direct phone testing and need a release keystore before Google Play publishing.
+
 ## [1.1.20] - 2026-05-08
 
 ### Removed Upload Target Labels

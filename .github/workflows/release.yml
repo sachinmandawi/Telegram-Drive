@@ -32,7 +32,7 @@ jobs:
               repo: context.repo.repo,
               tag_name: `v${{ steps.get_version.outputs.VERSION }}`,
               name: `Telegram Drive v${{ steps.get_version.outputs.VERSION }}`,
-              body: `Telegram Drive v${{ steps.get_version.outputs.VERSION }} improves delete-to-trash reliability so soft-deleted files and deleted folders stay in Trash/hidden state and do not return after Sync/Repair. It also includes Drive Tools, analytics, manifest export/import, offline cache controls, smart search, tags, Gallery and Media views, checksum verification, OCR indexing, preview search, watch folder sync, retryable queues, multi-account sessions, and configurable trash cleanup.\n\nSee the assets below to download and install.`,
+              body: `Telegram Drive v${{ steps.get_version.outputs.VERSION }} includes desktop builds for Windows, Linux, and macOS, plus an Android debug APK for phone testing.\n\nThe Android APK is debug-signed for direct testing. Use a release keystore before publishing to Google Play.\n\nSee the assets below to download and install.`,
               draft: true,
               prerelease: false
             });
@@ -255,8 +255,68 @@ jobs:
 
           echo "::notice::AppImage patched successfully for cross-distro EGL compatibility"
 
+  build-android:
+    needs: create-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.2.12479018"
+          yes | sdkmanager --licenses >/dev/null || true
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Initialize Android project
+        working-directory: app
+        run: npm run tauri -- android init --ci --skip-targets-install
+
+      - name: Build and upload Android APK
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_DEFAULT_STORAGE: saved_messages
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          projectPath: ./app
+          mobile: android
+          args: --debug --apk --target aarch64
+          releaseAssetNamePattern: "[name]_[version]_android_[arch]_[mode].[ext]"
+
   publish-release:
-    needs: [create-release, build-tauri]
+    needs: [create-release, build-tauri, build-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write

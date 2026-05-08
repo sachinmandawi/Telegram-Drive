@@ -3334,7 +3334,7 @@ async function createTelegramClient(apiId: number, apiHash: string): Promise<Tel
         useWSS: true,
         deviceModel: 'Telegram Drive Web',
         systemVersion: navigator.userAgent,
-        appVersion: '1.1.20-web',
+        appVersion: '1.1.21-web',
     });
 
     await client.connect();
