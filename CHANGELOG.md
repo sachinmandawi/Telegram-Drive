@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.34] - 2026-05-09
+
+### Mobile Grid Lifecycle Fix
+
+- Fixed mobile grids staying at 4 columns after the loading screen by attaching grid measurement only after the file grid is rendered.
+- Bumped app, Tauri, and release versions to 1.1.34.
+
 ## [1.1.33] - 2026-05-09
 
 ### Force Mobile Two Column Grid

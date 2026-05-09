@@ -76,12 +76,12 @@ function shouldUseMobileGrid() {
 }
 
 
-function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
-    const [columns, setColumns] = useState(4);
+function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>, enabled: boolean) {
+    const [columns, setColumns] = useState(() => shouldUseMobileGrid() ? 2 : 4);
     const [containerWidth, setContainerWidth] = useState(800);
 
     useEffect(() => {
-        if (!containerRef.current) return;
+        if (!enabled || !containerRef.current) return;
 
         const updateColumns = () => {
             const width = containerRef.current?.clientWidth || 800;
@@ -116,7 +116,7 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
                 legacyMobileGridQuery.removeListener(updateColumns);
             }
         };
-    }, [containerRef]);
+    }, [containerRef, enabled]);
 
     return { columns, containerWidth };
 }
@@ -130,7 +130,8 @@ export function FileExplorer({
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: TelegramFile } | null>(null);
 
     const parentRef = useRef<HTMLDivElement>(null);
-    const { columns, containerWidth } = useGridColumns(parentRef);
+    const gridReady = !loading && !error && files.length > 0;
+    const { columns, containerWidth } = useGridColumns(parentRef, gridReady);
     const selectionMode = selectedIds.length > 0;
 
     const GAP = containerWidth < 640 ? 12 : 6;
