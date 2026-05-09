@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.37] - 2026-05-09
+
+### Upload Resume And Duplicate Handling
+
+- Added upload queue pause/resume controls plus automatic retry scheduling for failed transfers.
+- Added duplicate upload handling with version, keep-both, replace, and skip options before uploading into the current folder.
+- Kept duplicate/version metadata consistent across Saved Messages storage and browser fallback storage.
+- Added rotate controls for image preview and PDF preview, alongside zoom in/out and reset controls.
+- Bumped app, Tauri, and release versions to 1.1.37.
+
 ## [1.1.36] - 2026-05-09
 
 ### Rich Preview Upgrade

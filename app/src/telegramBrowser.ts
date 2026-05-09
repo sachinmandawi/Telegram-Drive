@@ -6,6 +6,8 @@ import type {
     TelegramAccountInfo,
     TelegramFile,
     TelegramFolder,
+    UploadConflictInfo,
+    UploadConflictStrategy,
 } from './types';
 import { formatBytes, isAudioFile, isImageFile, isMediaFile, isPdfFile, isTextPreviewFile, isVideoFile } from './utils';
 
@@ -647,23 +649,58 @@ export async function telegramSetFileTags(messageId: number, tags: string[]): Pr
     return true;
 }
 
+export async function telegramGetUploadConflicts(
+    name: string,
+    size: number,
+    folderId: number | null
+): Promise<UploadConflictInfo> {
+    const manifest = await getDriveManifest();
+    const conflicts = findActiveUploadConflicts(manifest, name, folderId);
+    const exactCount = conflicts.filter((record) => record.size === size).length;
+
+    return {
+        count: conflicts.length,
+        exactCount,
+        name,
+        size,
+        folderId,
+        items: conflicts.map(recordToTelegramFile),
+    };
+}
+
 export async function telegramUploadFile(
     file: File,
     folderId: number | null,
-    onProgress?: (percent: number) => void
+    onProgress?: (percent: number) => void,
+    conflictStrategy: UploadConflictStrategy = 'version'
 ): Promise<TelegramFile> {
     const client = await authorizedTelegramClient();
     const manifest = await getDriveManifest();
-    const duplicates = findActiveDuplicates(manifest, file.name, file.size, folderId);
-    const versionGroup = duplicates[0]?.versionGroup || createVersionGroup(file.name);
-    const nextVersion = duplicates.length > 0
-        ? Math.max(...duplicates.map((record) => record.version || 1)) + 1
+    const strategy = normalizeUploadConflictStrategy(conflictStrategy);
+    const conflicts = findActiveUploadConflicts(manifest, file.name, folderId);
+    const versionConflicts = strategy === 'version' ? conflicts : [];
+    const replaceConflicts = strategy === 'replace' ? conflicts : [];
+    const uploadName = strategy === 'keep_both'
+        ? createUniqueFileName(manifest, file.name, folderId)
+        : file.name;
+
+    if (strategy === 'skip' && conflicts.length > 0) {
+        return recordToTelegramFile(conflicts[0]);
+    }
+
+    for (const conflict of replaceConflicts) {
+        assertFileMutable(manifest, conflict, 'replace');
+    }
+
+    const versionGroup = versionConflicts[0]?.versionGroup || createVersionGroup(file.name);
+    const nextVersion = versionConflicts.length > 0
+        ? Math.max(...versionConflicts.map((record) => record.version || 1)) + 1
         : 1;
     const updatedAt = new Date().toISOString();
     const checksum = await sha256Blob(file);
     const originalPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
 
-    for (const duplicate of duplicates) {
+    for (const duplicate of versionConflicts) {
         if (!duplicate.versionGroup) duplicate.versionGroup = versionGroup;
         if (!duplicate.version) duplicate.version = 1;
         duplicate.updatedAt = updatedAt;
@@ -683,11 +720,21 @@ export async function telegramUploadFile(
     });
 
     addBandwidth('up_bytes', file.size);
+
+    for (const conflict of replaceConflicts) {
+        const trashed = moveFileRecordToTrash(manifest, conflict.messageId, updatedAt, conflict);
+        rememberLocalFileLifecycle(trashed, 'trashed');
+        appendManifestEvent(manifest, 'file_trashed', {
+            ...createFileLifecyclePayload(trashed),
+            replacedBy: message.id,
+        });
+    }
+
     manifest.fileFolders[String(message.id)] = folderId;
     manifest.files[String(message.id)] = {
         messageId: message.id,
         folderId,
-        name: file.name,
+        name: uploadName,
         size: file.size,
         createdAt: updatedAt,
         updatedAt,
@@ -695,23 +742,24 @@ export async function telegramUploadFile(
         checksum,
         originalPath,
         integrityStatus: 'unknown',
-        versionGroup: duplicates.length > 0 ? versionGroup : undefined,
-        version: duplicates.length > 0 ? nextVersion : undefined,
-        duplicateOf: duplicates[0]?.messageId,
+        versionGroup: versionConflicts.length > 0 ? versionGroup : undefined,
+        version: versionConflicts.length > 0 ? nextVersion : undefined,
+        duplicateOf: versionConflicts[0]?.messageId,
     };
     appendManifestEvent(manifest, 'file_uploaded', {
         messageId: message.id,
         folderId,
-        name: file.name,
+        name: uploadName,
         size: file.size,
         checksum,
-        version: duplicates.length > 0 ? nextVersion : undefined,
+        conflictStrategy: strategy,
+        version: versionConflicts.length > 0 ? nextVersion : undefined,
     });
-    if (duplicates.length > 0) {
+    if (versionConflicts.length > 0) {
         appendManifestEvent(manifest, 'duplicate_detected', {
             messageId: message.id,
-            duplicateOf: duplicates[0].messageId,
-            count: duplicates.length,
+            duplicateOf: versionConflicts[0].messageId,
+            count: versionConflicts.length,
         });
     }
     await saveDriveManifest(manifest, 'debounced');
@@ -2830,6 +2878,11 @@ function normalizeConflictStrategy(strategy?: unknown): NameConflictStrategy {
     return 'keep_both';
 }
 
+function normalizeUploadConflictStrategy(strategy?: unknown): UploadConflictStrategy {
+    if (strategy === 'skip' || strategy === 'replace' || strategy === 'keep_both') return strategy;
+    return 'version';
+}
+
 function findActiveFileNameConflict(
     manifest: DriveManifest,
     name: string,
@@ -2841,6 +2894,19 @@ function findActiveFileNameConflict(
         .find((record) => record.messageId !== currentMessageId
             && (record.folderId ?? null) === folderId
             && record.name.toLowerCase() === name.toLowerCase());
+}
+
+function findActiveUploadConflicts(
+    manifest: DriveManifest,
+    name: string,
+    folderId: number | null
+): DriveFileRecord[] {
+    const normalizedName = name.toLowerCase();
+    return Object.values(manifest.files)
+        .filter((record) => !record.trashed && !record.missing)
+        .filter((record) => (record.folderId ?? null) === folderId)
+        .filter((record) => record.name.toLowerCase() === normalizedName)
+        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
 }
 
 function findActiveFolderNameConflict(
@@ -3236,18 +3302,6 @@ function formatActivityEventName(event: DriveEvent): string {
     const payload = event.payload || {};
     const name = String(payload.name || payload.fileName || payload.folderName || payload.messageId || payload.folderId || 'Drive item');
     return `${event.type.replace(/_/g, ' ')} - ${name}`;
-}
-
-function findActiveDuplicates(
-    manifest: DriveManifest,
-    name: string,
-    size: number,
-    folderId: number | null
-): DriveFileRecord[] {
-    return Object.values(manifest.files)
-        .filter((record) => !record.trashed && !record.missing)
-        .filter((record) => (record.folderId ?? null) === folderId)
-        .filter((record) => record.name === name && record.size === size);
 }
 
 function createVersionGroup(name: string): string {

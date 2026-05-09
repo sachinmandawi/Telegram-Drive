@@ -51,14 +51,16 @@ Telegram Drive turns your Telegram Saved Messages into a familiar drive-style fi
 ## Latest Highlights
 
 - Full-screen Google Drive-style previews with keyboard, swipe, and horizontal-scroll navigation.
-- Image preview now supports zoom, pan, and reset controls.
-- PDF preview includes page thumbnails for fast page jumping.
+- Image preview supports zoom, pan, rotate, and reset controls.
+- PDF preview includes page thumbnails plus zoom, rotate, and reset controls.
+- Upload queue supports pause/resume and automatic retry scheduling for failed transfers.
+- Duplicate uploads can be saved as versions, kept as renamed copies, replaced, or skipped.
 - ZIP, XLSX, PPTX, DOCX, CSV/TSV, text, and unsupported files have richer previews or metadata views.
 - Mobile and compact grids are forced to 2 columns after loading, while desktop grids default to 4 columns.
 - Folder moves update immediately and preserve nested children instead of flattening folder trees.
 - OCR and the heavy Tesseract dependency were removed.
 - Manual checksum verification was removed from the UI.
-- Website, desktop, and Android APK release workflows are aligned under `v1.1.36`.
+- Website, desktop, and Android APK release workflows are aligned under `v1.1.37`.
 
 ## Features
 
@@ -66,7 +68,7 @@ Telegram Drive turns your Telegram Saved Messages into a familiar drive-style fi
 | --- | --- | --- |
 | Saved Messages storage | Full-screen image preview | Recoverable Trash |
 | Virtual folder tree | Audio/video streaming | Repair Index |
-| Drag and drop upload | PDF viewer | Manifest backup/import |
+| Drag and drop upload | PDF viewer with zoom/rotate | Manifest backup/import |
 | Folder upload | Text/CSV/TSV/DOCX preview | Recovery tools |
 | Bulk move/download/delete | Preview search | Offline cache |
 | Tags and smart search | Thumbnails | Multi-account sessions |

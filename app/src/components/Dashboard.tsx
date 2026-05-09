@@ -150,7 +150,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     const {
         uploadQueue, setUploadQueue, handleManualUpload, handleDroppedFiles, queueFileEntries,
-        cancelAll: cancelUploads, retryFailed: retryFailedUploads, retryItem: retryUploadItem,
+        cancelAll: cancelUploads, pauseAll: pauseUploads, resumeAll: resumeUploads, retryFailed: retryFailedUploads, retryItem: retryUploadItem,
         removeItem: removeUploadItem, isDragging
     } = useFileUpload(activeFolderId, store, uploadTargetLabel);
     const { downloadQueue, queueDownload, clearFinished: clearDownloads, cancelAll: cancelDownloads, retryFailed: retryFailedDownloads } = useFileDownload(store);
@@ -163,9 +163,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     const syncStatusText = useMemo(() => {
         const activeUploads = uploadQueue.filter((item) => item.status === 'pending' || item.status === 'uploading').length;
+        const pausedUploads = uploadQueue.filter((item) => item.status === 'paused').length;
         const failedUploads = uploadQueue.filter((item) => item.status === 'error' || item.status === 'cancelled').length;
         if (isSyncing) return 'Syncing...';
         if (failedUploads > 0) return `${failedUploads} upload${failedUploads === 1 ? '' : 's'} need retry`;
+        if (pausedUploads > 0) return `${pausedUploads} upload${pausedUploads === 1 ? '' : 's'} paused`;
         if (activeUploads > 0) return `${activeUploads} upload${activeUploads === 1 ? '' : 's'} in queue`;
         if (lastSyncAt) return `Synced ${formatRelativeSyncTime(lastSyncAt)}`;
         return 'Ready';
@@ -1394,8 +1396,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
             <UploadQueue
                 items={uploadQueue}
-                onClearFinished={() => setUploadQueue(q => q.filter(i => i.status !== 'success' && i.status !== 'error' && i.status !== 'cancelled'))}
+                onClearFinished={() => setUploadQueue(q => q.filter(i => i.status !== 'success' && i.status !== 'error' && i.status !== 'cancelled' && i.status !== 'skipped'))}
                 onCancelAll={cancelUploads}
+                onPauseAll={pauseUploads}
+                onResumeAll={resumeUploads}
                 onRetryFailed={retryFailedUploads}
                 onRetryItem={retryUploadItem}
                 onRemoveItem={removeUploadItem}

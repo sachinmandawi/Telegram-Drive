@@ -4,6 +4,8 @@ import type {
     OfflineCacheStats,
     TelegramFile,
     TelegramFolder,
+    UploadConflictInfo,
+    UploadConflictStrategy,
 } from './types';
 import { formatBytes } from './utils';
 import {
@@ -17,6 +19,7 @@ import {
     telegramFlushManifest,
     telegramGetFiles,
     telegramGetFolders,
+    telegramGetUploadConflicts,
     telegramGetDriveStats,
     telegramGetActivityItems,
     telegramGetCleanupSuggestions,
@@ -90,6 +93,9 @@ type WebFileRecord = {
     checksum?: string;
     textIndex?: string;
     integrityStatus?: 'unknown' | 'valid' | 'mismatch';
+    versionGroup?: string;
+    version?: number;
+    duplicateOf?: number;
 };
 
 const DB_NAME = 'telegram-drive-web';
@@ -387,21 +393,41 @@ export async function toAssetUrl(path: string): Promise<string> {
 export async function uploadBrowserFile(
     file: File,
     folderId: number | null,
-    onProgress?: (percent: number) => void
+    onProgress?: (percent: number) => void,
+    conflictStrategy: UploadConflictStrategy = 'version'
 ): Promise<TelegramFile> {
     if (isSavedMessagesDefaultStorage()) {
-        return await telegramUploadFile(file, folderId, onProgress);
+        return await telegramUploadFile(file, folderId, onProgress, conflictStrategy);
     }
     ensureBrowserMode();
 
     const id = nextWebId();
     onProgress?.(15);
     const checksum = await sha256Blob(file);
+    const conflicts = await getWebUploadConflicts(file.name, file.size, folderId);
+    const strategy = normalizeUploadConflictStrategy(conflictStrategy);
+
+    if (strategy === 'skip' && conflicts.count > 0) {
+        const existing = conflicts.items[0];
+        if (!existing) throw new Error('Duplicate file skipped');
+        onProgress?.(100);
+        return existing;
+    }
+
+    if (strategy === 'replace' && conflicts.count > 0) {
+        for (const item of conflicts.items) {
+            await trashWebFile(item.id);
+        }
+    }
+
+    const uploadName = strategy === 'keep_both'
+        ? await createUniqueWebFileName(file.name, folderId)
+        : file.name;
 
     const record: WebFileRecord = {
         id,
         folderId,
-        name: file.name,
+        name: uploadName,
         size: file.size,
         created_at: new Date(file.lastModified || Date.now()).toLocaleString(),
         icon_type: 'file',
@@ -414,6 +440,9 @@ export async function uploadBrowserFile(
         trashed: false,
         checksum,
         integrityStatus: 'unknown',
+        duplicateOf: strategy === 'version' && conflicts.count > 0 ? conflicts.items[0]?.id : undefined,
+        versionGroup: strategy === 'version' && conflicts.count > 0 ? `web-${file.name.toLowerCase()}-${folderId ?? 'root'}` : undefined,
+        version: strategy === 'version' && conflicts.count > 0 ? conflicts.count + 1 : undefined,
     };
 
     await putWebFile(record);
@@ -478,6 +507,12 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
             return readBandwidth() as T;
         case 'cmd_get_drive_stats':
             return await getWebDriveStats() as T;
+        case 'cmd_get_upload_conflicts':
+            return await getWebUploadConflicts(
+                String(args.name || ''),
+                Number(args.size) || 0,
+                (args.folderId as number | null | undefined) ?? null
+            ) as T;
         case 'cmd_export_manifest':
             return {
                 filename: `telegram-drive-browser-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
@@ -703,6 +738,12 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
         case 'cmd_get_preview':
         case 'cmd_get_thumbnail':
             return await telegramGetObjectUrl(Number(args.messageId)) as T;
+        case 'cmd_get_upload_conflicts':
+            return await telegramGetUploadConflicts(
+                String(args.name || ''),
+                Number(args.size) || 0,
+                (args.folderId as number | null | undefined) ?? null
+            ) as T;
         case 'cmd_scan_folders':
             return await telegramGetFolders(true) as T;
         case 'cmd_repair_manifest':
@@ -793,6 +834,9 @@ function toTelegramFile(record: WebFileRecord): TelegramFile {
         deletedAt: record.deletedAt,
         checksum: record.checksum,
         integrityStatus: record.integrityStatus || 'unknown',
+        version: record.version,
+        versionGroup: record.versionGroup,
+        duplicateOf: record.duplicateOf,
     };
 }
 
@@ -894,6 +938,56 @@ async function getWebTrashFiles(query: string): Promise<TelegramFile[]> {
         .filter((record) => !normalized || record.name.toLowerCase().includes(normalized))
         .sort((a, b) => new Date(b.deletedAt || b.created_at || 0).getTime() - new Date(a.deletedAt || a.created_at || 0).getTime())
         .map(toTelegramFile);
+}
+
+async function getWebUploadConflicts(
+    name: string,
+    size: number,
+    folderId: number | null
+): Promise<UploadConflictInfo> {
+    const normalizedName = name.toLowerCase();
+    const records = await getAllWebFiles();
+    const conflicts = records
+        .filter((record) => !record.trashed)
+        .filter((record) => (record.folderId ?? null) === folderId)
+        .filter((record) => record.name.toLowerCase() === normalizedName)
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+
+    return {
+        count: conflicts.length,
+        exactCount: conflicts.filter((record) => record.size === size).length,
+        name,
+        size,
+        folderId,
+        items: conflicts.map(toTelegramFile),
+    };
+}
+
+async function createUniqueWebFileName(preferredName: string, folderId: number | null): Promise<string> {
+    const records = await getAllWebFiles();
+    const taken = new Set(records
+        .filter((record) => !record.trashed)
+        .filter((record) => (record.folderId ?? null) === folderId)
+        .map((record) => record.name.toLowerCase()));
+
+    if (!taken.has(preferredName.toLowerCase())) return preferredName;
+
+    const dotIndex = preferredName.lastIndexOf('.');
+    const hasExtension = dotIndex > 0 && dotIndex < preferredName.length - 1;
+    const base = hasExtension ? preferredName.slice(0, dotIndex) : preferredName;
+    const ext = hasExtension ? preferredName.slice(dotIndex) : '';
+    let index = 1;
+    let candidate = `${base} (${index})${ext}`;
+    while (taken.has(candidate.toLowerCase())) {
+        index++;
+        candidate = `${base} (${index})${ext}`;
+    }
+    return candidate;
+}
+
+function normalizeUploadConflictStrategy(strategy?: unknown): UploadConflictStrategy {
+    if (strategy === 'skip' || strategy === 'replace' || strategy === 'keep_both') return strategy;
+    return 'version';
 }
 
 async function moveWebFiles(messageIds: number[], targetFolderId: number | null): Promise<void> {

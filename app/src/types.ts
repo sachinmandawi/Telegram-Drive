@@ -73,10 +73,24 @@ export interface QueueItem {
     file?: File;
     folderId: number | null;
     targetLabel?: string;
-    status: 'pending' | 'uploading' | 'success' | 'error' | 'cancelled';
+    status: 'pending' | 'uploading' | 'success' | 'error' | 'cancelled' | 'paused' | 'skipped';
     error?: string;
     progress?: number; // 0-100
     attempts?: number;
+    retryAt?: number;
+    conflictStrategy?: UploadConflictStrategy;
+    conflictNote?: string;
+}
+
+export type UploadConflictStrategy = 'ask' | 'skip' | 'replace' | 'keep_both' | 'version';
+
+export interface UploadConflictInfo {
+    count: number;
+    exactCount: number;
+    name: string;
+    size: number;
+    folderId: number | null;
+    items: TelegramFile[];
 }
 
 export interface BandwidthStats {

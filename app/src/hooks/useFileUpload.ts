@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { QueueItem } from '../types';
+import { QueueItem, UploadConflictInfo, UploadConflictStrategy } from '../types';
 import { useFileDrop } from './useFileDrop';
 import { AppStore, invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime, listenEvent, openTauriFileDialog, uploadBrowserFile } from '../platform';
 import { friendlyDriveError } from '../utils';
@@ -17,11 +17,15 @@ interface BrowserUploadEntry {
     targetLabel?: string;
 }
 
+const MAX_AUTO_UPLOAD_ATTEMPTS = 3;
+const BASE_RETRY_DELAY_MS = 2500;
+
 export function useFileUpload(activeFolderId: number | null, store: AppStore | null, targetLabel = 'Saved Messages') {
     const queryClient = useQueryClient();
     const [uploadQueue, setUploadQueue] = useState<QueueItem[]>([]);
     const [processing, setProcessing] = useState(false);
     const [initialized, setInitialized] = useState(false);
+    const [retryTick, setRetryTick] = useState(0);
     const cancelledRef = useRef<Set<string>>(new Set());
     const lastManifestFlushRef = useRef('');
     const isDesktopRuntime = isTauriRuntime();
@@ -46,8 +50,12 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
         }
         store.get<QueueItem[]>('uploadQueue').then((saved) => {
             if (saved && saved.length > 0) {
-                const pending = saved.filter(i => i.status === 'pending' || i.status === 'error' || i.status === 'cancelled')
-                    .map((item) => item.status === 'pending' ? item : { ...item, status: 'pending' as const, error: undefined, progress: 0 });
+                const pending = saved.filter(i => i.status === 'pending' || i.status === 'paused' || i.status === 'error' || i.status === 'cancelled')
+                    .map((item) => (
+                        item.status === 'pending' || item.status === 'paused'
+                            ? item
+                            : { ...item, status: 'pending' as const, error: undefined, progress: 0, retryAt: undefined }
+                    ));
                 if (pending.length > 0) {
                     setUploadQueue(pending);
                     toast.info(`Restored ${pending.length} pending uploads`);
@@ -59,17 +67,29 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
 
     useEffect(() => {
         if (!store || !initialized || !useDesktopFileDialog) return;
-        const pending = uploadQueue.filter(i => i.status === 'pending' || i.status === 'error' || i.status === 'cancelled');
+        const pending = uploadQueue.filter(i => i.status === 'pending' || i.status === 'paused' || i.status === 'error' || i.status === 'cancelled');
         store.set('uploadQueue', pending).then(() => store.save());
     }, [store, uploadQueue, initialized, useDesktopFileDialog]);
 
     useEffect(() => {
         if (processing) return;
-        const nextItem = uploadQueue.find(i => i.status === 'pending');
+        const now = Date.now();
+        const nextItem = uploadQueue.find(i => i.status === 'pending' && (!i.retryAt || i.retryAt <= now));
         if (nextItem) {
             processItem(nextItem);
         }
-    }, [uploadQueue, processing]);
+    }, [uploadQueue, processing, retryTick]);
+
+    useEffect(() => {
+        const retryTimes = uploadQueue
+            .filter((item) => item.status === 'pending' && item.retryAt && item.retryAt > Date.now())
+            .map((item) => item.retryAt as number);
+        if (retryTimes.length === 0) return;
+
+        const delay = Math.max(250, Math.min(...retryTimes) - Date.now());
+        const timer = window.setTimeout(() => setRetryTick((tick) => tick + 1), delay);
+        return () => window.clearTimeout(timer);
+    }, [uploadQueue]);
 
     useEffect(() => {
         if (!savedMessagesDefault || uploadQueue.length === 0) return;
@@ -82,10 +102,78 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
         invokeCommand('cmd_flush_manifest').catch(() => undefined);
     }, [savedMessagesDefault, uploadQueue]);
 
-    const processItem = async (item: QueueItem) => {
-        setProcessing(true);
-        setUploadQueue(q => q.map(i => i.id === item.id ? { ...i, status: 'uploading', progress: 0, attempts: (i.attempts || 0) + 1 } : i));
+    const resolveUploadConflictStrategy = async (item: QueueItem): Promise<UploadConflictStrategy | null> => {
+        const preset = normalizeQueueConflictStrategy(item.conflictStrategy);
+        if (!item.file || preset !== 'ask') return preset === 'ask' ? 'version' : preset;
+
+        let conflicts: UploadConflictInfo;
         try {
+            conflicts = await invokeCommand<UploadConflictInfo>('cmd_get_upload_conflicts', {
+                name: item.file.name,
+                size: item.file.size,
+                folderId: item.folderId,
+            });
+        } catch {
+            return 'version';
+        }
+
+        if (conflicts.count === 0) return 'version';
+
+        const location = item.targetLabel || targetLabel;
+        const sizeNote = conflicts.exactCount > 0
+            ? `${conflicts.exactCount} same-size match${conflicts.exactCount === 1 ? '' : 'es'} found.`
+            : `${conflicts.count} name match${conflicts.count === 1 ? '' : 'es'} found.`;
+        const answer = window.prompt(
+            `"${item.file.name}" already exists in ${location}.\n${sizeNote}\nType one option: version, keep, replace, skip`,
+            'version'
+        );
+        const strategy = normalizePromptConflictStrategy(answer);
+        if (!strategy) return null;
+
+        setUploadQueue(q => q.map(i => i.id === item.id ? {
+            ...i,
+            conflictStrategy: strategy,
+            conflictNote: getConflictNote(strategy, conflicts),
+        } : i));
+        return strategy;
+    };
+
+    const processItem = async (item: QueueItem) => {
+        const attemptNumber = (item.attempts || 0) + 1;
+        setProcessing(true);
+        cancelledRef.current.delete(item.id);
+        setUploadQueue(q => q.map(i => i.id === item.id ? {
+            ...i,
+            status: 'uploading',
+            progress: 0,
+            retryAt: undefined,
+            attempts: attemptNumber,
+        } : i));
+        try {
+            const conflictStrategy = await resolveUploadConflictStrategy(item);
+            if (!conflictStrategy) {
+                setUploadQueue(q => q.map(i => i.id === item.id ? {
+                    ...i,
+                    status: 'cancelled',
+                    progress: 0,
+                    retryAt: undefined,
+                } : i));
+                return;
+            }
+
+            if (conflictStrategy === 'skip') {
+                setUploadQueue(q => q.map(i => i.id === item.id ? {
+                    ...i,
+                    status: 'skipped',
+                    progress: 100,
+                    retryAt: undefined,
+                    conflictStrategy,
+                    conflictNote: i.conflictNote || 'Skipped because a file with this name already exists.',
+                } : i));
+                toast.info(`Skipped duplicate ${getUploadDisplayName(item)}`);
+                return;
+            }
+
             if (useDesktopFileDialog) {
                 await invokeCommand('cmd_upload_file', { path: item.path, folderId: item.folderId, transferId: item.id });
             } else if (item.file) {
@@ -93,7 +181,7 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
                     setUploadQueue(q => q.map(i =>
                         i.id === item.id ? { ...i, progress: percent } : i
                     ));
-                });
+                }, conflictStrategy);
             } else {
                 throw new Error('Missing browser file payload');
             }
@@ -107,8 +195,21 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
         } catch (e) {
             if (!cancelledRef.current.has(item.id)) {
                 const message = friendlyDriveError(e);
-                setUploadQueue(q => q.map(i => i.id === item.id ? { ...i, status: 'error', error: message } : i));
-                toast.error(`Upload failed for ${item.path.split('/').pop()}: ${message}`);
+                const shouldRetry = attemptNumber < MAX_AUTO_UPLOAD_ATTEMPTS;
+                const retryDelay = BASE_RETRY_DELAY_MS * Math.pow(2, attemptNumber - 1);
+                const retryAt = Date.now() + retryDelay;
+                setUploadQueue(q => q.map(i => i.id === item.id ? {
+                    ...i,
+                    status: shouldRetry ? 'pending' as const : 'error' as const,
+                    error: message,
+                    retryAt: shouldRetry ? retryAt : undefined,
+                    progress: 0,
+                } : i));
+                if (shouldRetry) {
+                    toast.info(`Upload failed for ${getUploadDisplayName(item)}. Retrying in ${Math.ceil(retryDelay / 1000)}s`);
+                } else {
+                    toast.error(`Upload failed for ${getUploadDisplayName(item)}: ${message}`);
+                }
             } else {
                 cancelledRef.current.delete(item.id);
             }
@@ -168,29 +269,75 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
     };
 
     const cancelAll = () => {
+        const uploading = uploadQueue.some(i => i.status === 'uploading');
         setUploadQueue(q => {
             const uploading = q.find(i => i.status === 'uploading');
             if (uploading) cancelledRef.current.add(uploading.id);
             return q
-                .filter(i => i.status !== 'pending')
+                .filter(i => i.status !== 'pending' && i.status !== 'paused')
                 .map(i => i.status === 'uploading' ? { ...i, status: 'cancelled' as const } : i);
         });
-        toast.info('All uploads cancelled');
+        toast.info(uploading ? 'Queued uploads cancelled. Current transfer may finish in Telegram.' : 'All uploads cancelled');
+    };
+
+    const pauseAll = () => {
+        const pendingCount = uploadQueue.filter(i => i.status === 'pending').length;
+        const uploading = uploadQueue.some(i => i.status === 'uploading');
+        if (pendingCount === 0) {
+            toast.info(uploading ? 'Current upload will finish; no queued uploads to pause' : 'No queued uploads to pause');
+            return;
+        }
+        setUploadQueue(q => q.map(i => (
+            i.status === 'pending'
+                ? { ...i, status: 'paused' as const, retryAt: undefined }
+                : i
+        )));
+        toast.info(`Paused ${pendingCount} queued upload${pendingCount === 1 ? '' : 's'}${uploading ? '; current upload will finish' : ''}`);
+    };
+
+    const resumeAll = () => {
+        const pausedCount = uploadQueue.filter(i => i.status === 'paused').length;
+        if (pausedCount === 0) {
+            toast.info('No paused uploads to resume');
+            return;
+        }
+        setUploadQueue(q => q.map(i => (
+            i.status === 'paused'
+                ? { ...i, status: 'pending' as const, error: undefined, progress: 0, retryAt: undefined }
+                : i
+        )));
+        toast.info(`Resumed ${pausedCount} upload${pausedCount === 1 ? '' : 's'}`);
     };
 
     const retryFailed = () => {
         setUploadQueue(q => q.map(i => (
-            i.status === 'error' || i.status === 'cancelled'
-                ? { ...i, status: 'pending' as const, error: undefined, progress: 0 }
+            i.status === 'error' || i.status === 'cancelled' || i.status === 'skipped'
+                ? {
+                    ...i,
+                    status: 'pending' as const,
+                    error: undefined,
+                    progress: 0,
+                    retryAt: undefined,
+                    conflictStrategy: i.status === 'skipped' ? undefined : i.conflictStrategy,
+                    conflictNote: i.status === 'skipped' ? undefined : i.conflictNote,
+                }
                 : i
         )));
-        toast.info('Failed uploads queued again');
+        toast.info('Retryable uploads queued again');
     };
 
     const retryItem = (id: string) => {
         setUploadQueue(q => q.map(i => (
-            i.id === id && (i.status === 'error' || i.status === 'cancelled')
-                ? { ...i, status: 'pending' as const, error: undefined, progress: 0 }
+            i.id === id && (i.status === 'error' || i.status === 'cancelled' || i.status === 'skipped')
+                ? {
+                    ...i,
+                    status: 'pending' as const,
+                    error: undefined,
+                    progress: 0,
+                    retryAt: undefined,
+                    conflictStrategy: i.status === 'skipped' ? undefined : i.conflictStrategy,
+                    conflictNote: i.status === 'skipped' ? undefined : i.conflictNote,
+                }
                 : i
         )));
     };
@@ -213,6 +360,8 @@ export function useFileUpload(activeFolderId: number | null, store: AppStore | n
         queueFiles,
         queueFileEntries,
         cancelAll,
+        pauseAll,
+        resumeAll,
         retryFailed,
         retryItem,
         removeItem,
@@ -239,4 +388,34 @@ function pickBrowserFiles(): Promise<File[]> {
 function getBrowserFileDisplayPath(file: File): string {
     const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
     return relativePath || file.name;
+}
+
+function normalizeQueueConflictStrategy(strategy?: UploadConflictStrategy): UploadConflictStrategy {
+    if (strategy === 'skip' || strategy === 'replace' || strategy === 'keep_both' || strategy === 'version') {
+        return strategy;
+    }
+    return 'ask';
+}
+
+function normalizePromptConflictStrategy(answer: string | null): UploadConflictStrategy | null {
+    if (answer === null) return null;
+    const normalized = answer.trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (!normalized || normalized === 'version' || normalized === 'new_version') return 'version';
+    if (normalized === 'keep' || normalized === 'keep_both' || normalized === 'copy') return 'keep_both';
+    if (normalized === 'replace' || normalized === 'overwrite') return 'replace';
+    if (normalized === 'skip') return 'skip';
+    return 'version';
+}
+
+function getConflictNote(strategy: UploadConflictStrategy, conflicts: UploadConflictInfo): string {
+    const count = conflicts.count;
+    if (strategy === 'skip') return `Skipped because ${count} duplicate${count === 1 ? '' : 's'} already exist.`;
+    if (strategy === 'replace') return `Replaced ${count} existing duplicate${count === 1 ? '' : 's'} by moving them to Trash.`;
+    if (strategy === 'keep_both') return 'Uploaded with a unique copy name.';
+    return `Uploaded as a new version after ${count} duplicate${count === 1 ? '' : 's'} were found.`;
+}
+
+function getUploadDisplayName(item: QueueItem): string {
+    const normalizedPath = item.path.replace(/\\/g, '/');
+    return normalizedPath.split('/').pop() || item.path;
 }

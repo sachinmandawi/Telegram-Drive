@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { X, ZoomIn, ZoomOut, Maximize, PanelLeft } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Maximize, PanelLeft, RotateCcw, RotateCw } from 'lucide-react';
 // Use the legacy build because the modern build uses Map.getOrInsertComputed(),
 // which isn't available in Tauri's WebKit WebView
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -26,6 +26,7 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
     const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
     const [numPages, setNumPages] = useState<number>(0);
     const [scale, setScale] = useState<number>(1.2);
+    const [rotation, setRotation] = useState<number>(0);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [thumbnailOpen, setThumbnailOpen] = useState(true);
@@ -44,6 +45,8 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
         setPdf(null);
         setNumPages(0);
         setActivePage(1);
+        setScale(1.2);
+        setRotation(0);
         setLoading(true);
         setError(null);
 
@@ -178,11 +181,25 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
             if (e.key === '=' || key === '+') {
                 e.preventDefault();
                 setScale(s => Math.min(s + 0.2, 3));
+                return;
             }
 
             if (e.key === '-') {
                 e.preventDefault();
                 setScale(s => Math.max(s - 0.2, 0.5));
+                return;
+            }
+
+            if (key === 'r') {
+                e.preventDefault();
+                setRotation((current) => (current + 90) % 360);
+                return;
+            }
+
+            if (e.key === '0') {
+                e.preventDefault();
+                setScale(1.2);
+                setRotation(0);
             }
         };
 
@@ -203,6 +220,17 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
     const handleFitWidth = (e: React.MouseEvent) => {
         e.stopPropagation();
         setScale(1.2);
+    };
+
+    const handleRotate = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setRotation((current) => (current + 90) % 360);
+    };
+
+    const handleResetView = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setScale(1.2);
+        setRotation(0);
     };
 
     const scrollToPage = (pageNumber: number) => {
@@ -246,6 +274,12 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
                     <button onClick={handleFitWidth} className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors" title="Fit Width">
                         <Maximize className="w-4 h-4" />
                     </button>
+                    <button onClick={handleRotate} className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors" title="Rotate Right (R)">
+                        <RotateCw className="w-4 h-4" />
+                    </button>
+                    <button onClick={handleResetView} className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors" title="Reset View (0)">
+                        <RotateCcw className="w-4 h-4" />
+                    </button>
                 </div>
             </div>
 
@@ -262,6 +296,7 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
                     numPages={numPages}
                     activePage={activePage}
                     onSelect={scrollToPage}
+                    rotation={rotation}
                 />
             )}
 
@@ -294,6 +329,7 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
                                 pageNumber={index + 1}
                                 pdf={pdf}
                                 scale={scale}
+                                rotation={rotation}
                                 fileId={file.id}
                                 onVisiblePage={setActivePage}
                             />
@@ -318,12 +354,14 @@ function PdfPage({
     pageNumber,
     pdf,
     scale,
+    rotation,
     fileId,
     onVisiblePage,
 }: {
     pageNumber: number;
     pdf: pdfjsLib.PDFDocumentProxy;
     scale: number;
+    rotation: number;
     fileId: number;
     onVisiblePage: (pageNumber: number) => void;
 }) {
@@ -374,7 +412,7 @@ function PdfPage({
     useEffect(() => {
         if (!page || !canvasRef.current || !isVisible) return;
 
-        const viewport = page.getViewport({ scale });
+        const viewport = page.getViewport({ scale, rotation });
         const canvas = canvasRef.current;
         const context = canvas.getContext('2d');
 
@@ -406,11 +444,12 @@ function PdfPage({
             renderTask.cancel();
             renderTaskRef.current = null;
         };
-    }, [page, scale, isVisible, pageNumber]);
+    }, [page, scale, rotation, isVisible, pageNumber]);
 
     // Estimated dimensions for the placeholder before page loads (US Letter @ 96 DPI)
-    const estimatedHeight = 1056 * scale;
-    const estimatedWidth = 816 * scale;
+    const sideways = rotation % 180 !== 0;
+    const estimatedHeight = (sideways ? 816 : 1056) * scale;
+    const estimatedWidth = (sideways ? 1056 : 816) * scale;
 
     return (
         <div
@@ -438,11 +477,13 @@ function PdfThumbnailRail({
     numPages,
     activePage,
     onSelect,
+    rotation,
 }: {
     pdf: pdfjsLib.PDFDocumentProxy;
     numPages: number;
     activePage: number;
     onSelect: (pageNumber: number) => void;
+    rotation: number;
 }) {
     return (
         <aside
@@ -458,6 +499,7 @@ function PdfThumbnailRail({
                         pageNumber={index + 1}
                         active={activePage === index + 1}
                         onSelect={onSelect}
+                        rotation={rotation}
                     />
                 ))}
             </div>
@@ -470,11 +512,13 @@ function PdfThumbnail({
     pageNumber,
     active,
     onSelect,
+    rotation,
 }: {
     pdf: pdfjsLib.PDFDocumentProxy;
     pageNumber: number;
     active: boolean;
     onSelect: (pageNumber: number) => void;
+    rotation: number;
 }) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const renderTaskRef = useRef<ReturnType<pdfjsLib.PDFPageProxy['render']> | null>(null);
@@ -485,7 +529,7 @@ function PdfThumbnail({
             const page = await pdf.getPage(pageNumber);
             if (cancelled || !canvasRef.current) return;
 
-            const viewport = page.getViewport({ scale: 0.18 });
+            const viewport = page.getViewport({ scale: 0.18, rotation });
             const canvas = canvasRef.current;
             const context = canvas.getContext('2d');
             if (!context) return;
@@ -506,7 +550,7 @@ function PdfThumbnail({
             renderTaskRef.current?.cancel();
             renderTaskRef.current = null;
         };
-    }, [pdf, pageNumber]);
+    }, [pdf, pageNumber, rotation]);
 
     return (
         <button

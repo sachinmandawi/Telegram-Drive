@@ -1,5 +1,5 @@
 import { type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent, useEffect, useRef, useState } from 'react';
-import { Archive, Download, File, FileText, Presentation, RotateCcw, Search, Table2, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Archive, Download, File, FileText, Presentation, RotateCcw, RotateCw, Search, Table2, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import {
     formatBytes,
@@ -596,8 +596,16 @@ export function PreviewModal({
 
 function ZoomableImagePreview({ src, alt, onError }: { src: string; alt: string; onError: () => void }) {
     const [scale, setScale] = useState(1);
+    const [rotation, setRotation] = useState(0);
     const [offset, setOffset] = useState({ x: 0, y: 0 });
     const dragRef = useRef<{ pointerId: number; x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+
+    useEffect(() => {
+        setScale(1);
+        setRotation(0);
+        setOffset({ x: 0, y: 0 });
+        dragRef.current = null;
+    }, [src]);
 
     const clampScale = (value: number) => Math.min(5, Math.max(0.5, value));
     const zoomBy = (delta: number) => {
@@ -607,8 +615,13 @@ function ZoomableImagePreview({ src, alt, onError }: { src: string; alt: string;
             return next;
         });
     };
+    const rotateRight = () => {
+        setRotation((current) => (current + 90) % 360);
+        setOffset({ x: 0, y: 0 });
+    };
     const reset = () => {
         setScale(1);
+        setRotation(0);
         setOffset({ x: 0, y: 0 });
     };
 
@@ -672,7 +685,7 @@ function ZoomableImagePreview({ src, alt, onError }: { src: string; alt: string;
                 draggable={false}
                 onError={onError}
                 style={{
-                    transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})`,
+                    transform: `translate3d(${offset.x}px, ${offset.y}px, 0) rotate(${rotation}deg) scale(${scale})`,
                     transition: dragRef.current ? 'none' : 'transform 120ms ease-out',
                 }}
             />
@@ -683,6 +696,9 @@ function ZoomableImagePreview({ src, alt, onError }: { src: string; alt: string;
                 <span className="min-w-12 text-center text-xs font-medium">{Math.round(scale * 100)}%</span>
                 <button type="button" className="rounded-full p-2 text-white/70 hover:bg-white/10 hover:text-white" onClick={(event) => { event.stopPropagation(); zoomBy(0.25); }} title="Zoom in">
                     <ZoomIn className="h-4 w-4" />
+                </button>
+                <button type="button" className="rounded-full p-2 text-white/70 hover:bg-white/10 hover:text-white" onClick={(event) => { event.stopPropagation(); rotateRight(); }} title="Rotate right">
+                    <RotateCw className="h-4 w-4" />
                 </button>
                 <button type="button" className="rounded-full p-2 text-white/70 hover:bg-white/10 hover:text-white" onClick={(event) => { event.stopPropagation(); reset(); }} title="Reset image">
                     <RotateCcw className="h-4 w-4" />
