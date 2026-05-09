@@ -3,6 +3,7 @@ import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { isVideoFile, isAudioFile } from '../../utils';
 import { getBrowserFileObjectUrl, invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime, type StreamInfo } from '../../platform';
+import { usePreviewNavigationGestures } from '../../hooks/usePreviewNavigationGestures';
 
 interface MediaPlayerProps {
     file: TelegramFile;
@@ -62,6 +63,7 @@ export function MediaPlayer({ file, onClose, onNext, onPrev, currentIndex, total
 
     const isVideo = isVideoFile(file);
     const isAudio = isAudioFile(file);
+    const navigationGestures = usePreviewNavigationGestures({ onNext, onPrev });
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -95,7 +97,11 @@ export function MediaPlayer({ file, onClose, onNext, onPrev, currentIndex, total
     }, [onClose, onNext, onPrev]);
 
     return (
-        <div className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-200" onClick={onClose}>
+        <div
+            className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-200"
+            onClick={onClose}
+            {...navigationGestures}
+        >
             <div className="relative w-full max-w-6xl flex flex-col items-center" onClick={e => e.stopPropagation()}>
                 <button
                     onClick={onPrev}

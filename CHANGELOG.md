@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.30] - 2026-05-09
+
+### Folder Move, Settings, And Preview Polish
+
+- Fixed nested folder moves so selected child folders stay inside their selected parent instead of being flattened into the destination.
+- Removed OCR text extraction and the Tesseract dependency.
+- Added a separate Settings page with saved grid column options: 2, 3, 4, 5, and 6 columns, defaulting to 4.
+- Kept the floating plus menu action boxes the same size and blurred the plus button behind the open menu.
+- Added left/right swipe and horizontal scroll navigation for preview screens.
+- Expanded common Telegram media/file type detection for image, video, audio, subtitle, and text previews.
+- Bumped app, Tauri, and release versions to 1.1.30.
+
 ## [1.1.23] - 2026-05-08
 
 ### Android Mobile Compile Fix

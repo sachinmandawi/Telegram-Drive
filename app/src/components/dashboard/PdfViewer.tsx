@@ -5,6 +5,7 @@ import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize } from 'lucide-
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { TelegramFile } from '../../types';
 import { getBrowserFileObjectUrl, invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime, type StreamInfo } from '../../platform';
+import { usePreviewNavigationGestures } from '../../hooks/usePreviewNavigationGestures';
 
 // Use Vite's ?url suffix to get a properly bundled asset URL for the worker
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
@@ -32,6 +33,7 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
     const pdfRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
     const isDesktopRuntime = isTauriRuntime();
     const useDesktopStream = isDesktopRuntime && !isSavedMessagesDefaultStorage();
+    const navigationGestures = usePreviewNavigationGestures({ onNext, onPrev });
 
     // Fetch stream info once
     useEffect(() => {
@@ -208,7 +210,11 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
     };
 
     return (
-        <div className="fixed inset-0 z-[200] bg-black/90 flex flex-col p-4 backdrop-blur-md animate-in fade-in duration-200" onClick={onClose}>
+        <div
+            className="fixed inset-0 z-[200] bg-black/90 flex flex-col p-4 backdrop-blur-md animate-in fade-in duration-200"
+            onClick={onClose}
+            {...navigationGestures}
+        >
             {/* Header / Controls */}
             <div className="absolute top-4 left-0 right-0 flex justify-between items-center px-8 z-10 pointer-events-none">
                 <div className="text-white bg-black/40 backdrop-blur-md px-4 py-2 rounded-full pointer-events-auto border border-white/10">

@@ -117,8 +117,6 @@ type DriveFileRecord = {
     duplicateOf?: number;
     textIndex?: string;
     textIndexedAt?: string;
-    ocrText?: string;
-    ocrIndexedAt?: string;
     checksumVerifiedAt?: string;
     integrityStatus?: 'unknown' | 'valid' | 'mismatch';
 };
@@ -395,7 +393,7 @@ export async function telegramMoveFolders(
     const updatedAt = new Date().toISOString();
     const strategy = normalizeConflictStrategy(conflictStrategy);
     ensureDestinationFolderRecord(manifest, targetParentId, targetFolderName, targetParentIdHint);
-    const moving = new Set(folderIds.filter((id) => Number.isFinite(id)));
+    const moving = pruneNestedFolderIds(folderIds, manifest.folders);
     for (const folderId of moving) {
         if (targetParentId !== null && collectManifestFolderTreeIds(folderId, manifest.folders).has(targetParentId)) {
             throw new Error('A folder cannot be moved into itself.');
@@ -1149,7 +1147,7 @@ export async function telegramVerifyFile(messageId: number): Promise<IntegrityRe
     };
 }
 
-export async function telegramIndexFileText(messageId: number, text: string, source: 'preview' | 'ocr' = 'preview'): Promise<boolean> {
+export async function telegramIndexFileText(messageId: number, text: string): Promise<boolean> {
     const manifest = await getDriveManifest();
     const key = String(messageId);
     const record = manifest.files[key];
@@ -1158,12 +1156,11 @@ export async function telegramIndexFileText(messageId: number, text: string, sou
     const normalized = normalizeSearchText(text).slice(0, 120_000);
     manifest.files[key] = {
         ...record,
-        ...(source === 'ocr'
-            ? { ocrText: normalized, ocrIndexedAt: new Date().toISOString() }
-            : { textIndex: normalized, textIndexedAt: new Date().toISOString() }),
+        textIndex: normalized,
+        textIndexedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
     };
-    appendManifestEvent(manifest, 'text_indexed', { messageId, source, bytes: normalized.length });
+    appendManifestEvent(manifest, 'text_indexed', { messageId, source: 'preview', bytes: normalized.length });
     await saveDriveManifest(manifest, 'debounced');
     return true;
 }
@@ -1417,8 +1414,6 @@ export async function telegramRepairManifest(): Promise<{
             duplicateOf: before?.duplicateOf,
             textIndex: before?.textIndex,
             textIndexedAt: before?.textIndexedAt,
-            ocrText: before?.ocrText,
-            ocrIndexedAt: before?.ocrIndexedAt,
             checksumVerifiedAt: before?.checksumVerifiedAt,
             integrityStatus: before?.integrityStatus,
             missing: false,
@@ -1986,8 +1981,6 @@ function normalizeLifecycleRecord(messageId: number, record: Partial<DriveFileRe
         duplicateOf: record.duplicateOf === undefined ? undefined : Number(record.duplicateOf) || undefined,
         textIndex: typeof record.textIndex === 'string' ? record.textIndex : undefined,
         textIndexedAt: typeof record.textIndexedAt === 'string' ? record.textIndexedAt : undefined,
-        ocrText: typeof record.ocrText === 'string' ? record.ocrText : undefined,
-        ocrIndexedAt: typeof record.ocrIndexedAt === 'string' ? record.ocrIndexedAt : undefined,
         checksumVerifiedAt: typeof record.checksumVerifiedAt === 'string' ? record.checksumVerifiedAt : undefined,
         integrityStatus: record.integrityStatus === 'valid' || record.integrityStatus === 'mismatch'
             ? record.integrityStatus
@@ -2156,8 +2149,6 @@ function normalizeFileRecords(
             duplicateOf: record.duplicateOf === undefined ? undefined : Number(record.duplicateOf) || undefined,
             textIndex: typeof record.textIndex === 'string' ? record.textIndex : undefined,
             textIndexedAt: typeof record.textIndexedAt === 'string' ? record.textIndexedAt : undefined,
-            ocrText: typeof record.ocrText === 'string' ? record.ocrText : undefined,
-            ocrIndexedAt: typeof record.ocrIndexedAt === 'string' ? record.ocrIndexedAt : undefined,
             checksumVerifiedAt: typeof record.checksumVerifiedAt === 'string' ? record.checksumVerifiedAt : undefined,
             integrityStatus: record.integrityStatus === 'valid' || record.integrityStatus === 'mismatch'
                 ? record.integrityStatus
@@ -2528,6 +2519,31 @@ function collectManifestFolderTreeIds(folderId: number, folders: TelegramFolder[
         }
     }
     return ids;
+}
+
+function pruneNestedFolderIds(folderIds: number[], folders: TelegramFolder[]): Set<number> {
+    const requested = new Set(folderIds.filter((id) => Number.isFinite(id)));
+    const pruned = new Set<number>();
+
+    for (const folderId of requested) {
+        let current = folders.find((folder) => folder.id === folderId);
+        let nestedUnderSelectedParent = false;
+        const seen = new Set<number>();
+
+        while (current && !seen.has(current.id)) {
+            seen.add(current.id);
+            const parentId = current.parent_id ?? null;
+            if (parentId !== null && requested.has(parentId)) {
+                nestedUnderSelectedParent = true;
+                break;
+            }
+            current = parentId === null ? undefined : folders.find((folder) => folder.id === parentId);
+        }
+
+        if (!nestedUnderSelectedParent) pruned.add(folderId);
+    }
+
+    return pruned;
 }
 
 function createRecordFromLifecycleEvent(
@@ -3384,7 +3400,6 @@ function toTelegramFile(message: TelegramMessage, manifest?: DriveManifest): Tel
         versionGroup: record?.versionGroup,
         duplicateOf: record?.duplicateOf,
         textIndexedAt: record?.textIndexedAt,
-        ocrIndexedAt: record?.ocrIndexedAt,
         checksumVerifiedAt: record?.checksumVerifiedAt,
         integrityStatus: record?.integrityStatus || 'unknown',
     };
@@ -3416,7 +3431,6 @@ function recordToTelegramFile(record: DriveFileRecord): TelegramFile {
         versionGroup: record.versionGroup,
         duplicateOf: record.duplicateOf,
         textIndexedAt: record.textIndexedAt,
-        ocrIndexedAt: record.ocrIndexedAt,
         checksumVerifiedAt: record.checksumVerifiedAt,
         integrityStatus: record.integrityStatus || 'unknown',
     };
@@ -3553,7 +3567,6 @@ function matchesSmartSearch(record: DriveFileRecord, filters: SmartSearchFilters
         record.checksum,
         ...(record.tags || []),
         record.textIndex,
-        record.ocrText,
     ].filter(Boolean).join(' '));
 
     return filters.terms.every((term) => haystack.includes(term));
@@ -3607,7 +3620,7 @@ function buildDriveStats(manifest: DriveManifest): DriveStats {
         totalBytes: records.reduce((sum, record) => sum + (record.size || 0), 0),
         activeBytes: active.reduce((sum, record) => sum + (record.size || 0), 0),
         trashedBytes: trashed.reduce((sum, record) => sum + (record.size || 0), 0),
-        indexedTextFiles: records.filter((record) => record.textIndex || record.ocrText).length,
+        indexedTextFiles: records.filter((record) => record.textIndex).length,
         verifiedFiles: records.filter((record) => record.integrityStatus === 'valid').length,
         checksumMismatches: records.filter((record) => record.integrityStatus === 'mismatch').length,
         folders: manifest.folders.filter((folder) => !folder.trashed).length,

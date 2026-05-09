@@ -8,12 +8,16 @@ const extensionMap: Record<string, { icon: typeof File; color: string }> = {
     // Images
     jpg: { icon: FileImage, color: 'text-pink-400' },
     jpeg: { icon: FileImage, color: 'text-pink-400' },
+    jfif: { icon: FileImage, color: 'text-pink-400' },
     png: { icon: FileImage, color: 'text-pink-400' },
     gif: { icon: FileImage, color: 'text-pink-400' },
     webp: { icon: FileImage, color: 'text-pink-400' },
     svg: { icon: FileImage, color: 'text-pink-400' },
     bmp: { icon: FileImage, color: 'text-pink-400' },
+    avif: { icon: FileImage, color: 'text-pink-400' },
+    ico: { icon: FileImage, color: 'text-pink-400' },
     heic: { icon: FileImage, color: 'text-pink-400' },
+    heif: { icon: FileImage, color: 'text-pink-400' },
 
     // Videos
     mp4: { icon: FileVideo, color: 'text-purple-400' },
@@ -21,6 +25,12 @@ const extensionMap: Record<string, { icon: typeof File; color: string }> = {
     avi: { icon: FileVideo, color: 'text-purple-400' },
     mkv: { icon: FileVideo, color: 'text-purple-400' },
     webm: { icon: FileVideo, color: 'text-purple-400' },
+    m4v: { icon: FileVideo, color: 'text-purple-400' },
+    '3gp': { icon: FileVideo, color: 'text-purple-400' },
+    '3g2': { icon: FileVideo, color: 'text-purple-400' },
+    mpg: { icon: FileVideo, color: 'text-purple-400' },
+    mpeg: { icon: FileVideo, color: 'text-purple-400' },
+    ogv: { icon: FileVideo, color: 'text-purple-400' },
 
     // Audio
     mp3: { icon: FileAudio, color: 'text-green-400' },
@@ -28,6 +38,13 @@ const extensionMap: Record<string, { icon: typeof File; color: string }> = {
     flac: { icon: FileAudio, color: 'text-green-400' },
     aac: { icon: FileAudio, color: 'text-green-400' },
     ogg: { icon: FileAudio, color: 'text-green-400' },
+    oga: { icon: FileAudio, color: 'text-green-400' },
+    opus: { icon: FileAudio, color: 'text-green-400' },
+    amr: { icon: FileAudio, color: 'text-green-400' },
+    m4a: { icon: FileAudio, color: 'text-green-400' },
+    m4b: { icon: FileAudio, color: 'text-green-400' },
+    aif: { icon: FileAudio, color: 'text-green-400' },
+    aiff: { icon: FileAudio, color: 'text-green-400' },
 
     // Documents
     pdf: { icon: FileType, color: 'text-red-400' },

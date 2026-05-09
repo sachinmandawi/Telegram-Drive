@@ -15,8 +15,6 @@ interface TopBarProps {
     onBulkTag: () => void;
     searchTerm: string;
     onSearchChange: (term: string) => void;
-    searchScope: 'current' | 'drive';
-    onSearchScopeChange: (scope: 'current' | 'drive') => void;
     savedMessagesOnly?: boolean;
     syncStatusText?: string;
     onOpenSidebar?: () => void;
@@ -26,7 +24,7 @@ export function TopBar({
     currentFolderName, selectedIds, onShowMoveModal, onBulkDownload, onBulkDelete,
     onBulkTag, searchTerm, onSearchChange, savedMessagesOnly = false,
     onSelectAll, onClearSelection, allSelected, selectableCount, breadcrumbs, onBulkRestore,
-    searchScope, onSearchScopeChange, syncStatusText, onOpenSidebar
+    syncStatusText, onOpenSidebar
 }: TopBarProps) {
     const visibleBreadcrumbs = breadcrumbs && breadcrumbs.length > 0 ? breadcrumbs : [{ label: 'Start' }, { label: currentFolderName }];
 
@@ -81,10 +79,6 @@ export function TopBar({
                             {syncStatusText}
                         </div>
                     )}
-                    <div className="flex shrink-0 rounded-md border border-telegram-border bg-telegram-hover p-0.5 text-[11px]">
-                        <button onClick={() => onSearchScopeChange('current')} className={`rounded px-2 py-1 ${searchScope === 'current' ? 'bg-telegram-primary text-black' : 'text-telegram-subtext'}`}>Here</button>
-                        <button onClick={() => onSearchScopeChange('drive')} className={`rounded px-2 py-1 ${searchScope === 'drive' ? 'bg-telegram-primary text-black' : 'text-telegram-subtext'}`}>Drive</button>
-                    </div>
                     {['type:pdf', 'type:image', 'trash', 'size>10mb'].map((chip) => (
                         <button
                             key={chip}

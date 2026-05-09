@@ -33,10 +33,10 @@ export function friendlyDriveError(error: unknown): string {
 // File type classification.
 import type { TelegramFile } from './types';
 
-const VIDEO_EXTENSIONS = ['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi'] as const;
-const AUDIO_EXTENSIONS = ['mp3', 'wav', 'aac', 'flac', 'm4a', 'opus'] as const;
+const VIDEO_EXTENSIONS = ['mp4', 'webm', 'ogv', 'mov', 'mkv', 'avi', 'm4v', '3gp', '3g2', 'mpg', 'mpeg'] as const;
+const AUDIO_EXTENSIONS = ['mp3', 'wav', 'aac', 'flac', 'm4a', 'm4b', 'opus', 'ogg', 'oga', 'amr', 'aif', 'aiff'] as const;
 const MEDIA_EXTENSIONS: readonly string[] = [...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS];
-const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'heif'] as const;
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'jfif', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif', 'ico', 'heic', 'heif'] as const;
 const DOCUMENT_PREVIEW_EXTENSIONS = ['docx'] as const;
 const SPREADSHEET_PREVIEW_EXTENSIONS = ['csv', 'tsv'] as const;
 const TEXT_PREVIEW_EXTENSIONS = [
@@ -44,7 +44,8 @@ const TEXT_PREVIEW_EXTENSIONS = [
     'ini', 'cfg', 'conf', 'yaml', 'yml', 'toml', 'xml', 'html', 'htm',
     'css', 'scss', 'less', 'js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'env',
     'py', 'java', 'c', 'cpp', 'cc', 'h', 'hpp', 'cs', 'go', 'rs',
-    'php', 'rb', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd', 'sql', 'rtf', 'srt', 'vtt'
+    'php', 'rb', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd', 'sql', 'rtf', 'srt', 'vtt',
+    'ass', 'ssa', 'lrc', 'nfo', 'properties'
 ] as const;
 const TEXT_PREVIEW_MIME_TYPES = [
     'application/json',

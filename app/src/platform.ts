@@ -644,8 +644,7 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
         case 'cmd_index_file_text':
             return await telegramIndexFileText(
                 Number(args.messageId),
-                String(args.text || ''),
-                args.source === 'ocr' ? 'ocr' : 'preview'
+                String(args.text || '')
             ) as T;
         case 'cmd_list_accounts':
             return await telegramListAccounts() as T;

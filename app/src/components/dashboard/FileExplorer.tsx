@@ -3,7 +3,7 @@ import { Plus, ArrowUpDown, ArrowUp, ArrowDown, FolderPlus } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { FileCard } from './FileCard';
 import { EmptyState } from './EmptyState';
-import { TelegramFile } from '../../types';
+import { GridColumnCount, TelegramFile } from '../../types';
 import { ContextMenu } from './ContextMenu';
 import { FileListItem } from './FileListItem';
 
@@ -43,10 +43,11 @@ interface FileExplorerProps {
     onToggleProtection?: (file: TelegramFile) => void;
     getItemPath?: (file: TelegramFile) => string | undefined;
     highlightedId?: number | null;
+    gridColumns?: GridColumnCount;
 }
 
 
-function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
+function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>, preferredColumns: GridColumnCount = 4) {
     const [columns, setColumns] = useState(4);
     const [containerWidth, setContainerWidth] = useState(800);
 
@@ -55,42 +56,32 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
 
         const updateColumns = () => {
             const width = containerRef.current?.clientWidth || 800;
-            const isMobileGrid = window.matchMedia('(pointer: coarse), (max-width: 767px)').matches;
             setContainerWidth(width);
-            if (isMobileGrid) setColumns(2);
-            else if (width < 420) setColumns(1);
-            else if (width < 700) setColumns(2);
-            else if (width < 920) setColumns(3);
-            else if (width < 1180) setColumns(4);
-            else if (width < 1440) setColumns(5);
-            else setColumns(6);
+            setColumns(preferredColumns);
         };
 
         updateColumns();
         const observer = new ResizeObserver(updateColumns);
         observer.observe(containerRef.current);
-        const mobileGridQuery = window.matchMedia('(pointer: coarse), (max-width: 767px)');
-        mobileGridQuery.addEventListener('change', updateColumns);
 
         return () => {
             observer.disconnect();
-            mobileGridQuery.removeEventListener('change', updateColumns);
         };
-    }, [containerRef]);
+    }, [containerRef, preferredColumns]);
 
     return { columns, containerWidth };
 }
 
 export function FileExplorer({
     files, loading, error, viewMode, selectedIds, activeFolderId,
-    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMove, onMergeFolder, onToggleLock, onToggleProtection, getItemPath, highlightedId
+    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMove, onMergeFolder, onToggleLock, onToggleProtection, getItemPath, highlightedId, gridColumns = 4
 }: FileExplorerProps) {
     const [sortField, setSortField] = useState<SortField>('name');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: TelegramFile } | null>(null);
 
     const parentRef = useRef<HTMLDivElement>(null);
-    const { columns, containerWidth } = useGridColumns(parentRef);
+    const { columns, containerWidth } = useGridColumns(parentRef, gridColumns);
     const selectionMode = selectedIds.length > 0;
 
     const GAP = containerWidth < 640 ? 12 : 6;

@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, File, FileText, ScanText, Search, Table2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, File, FileText, Search, Table2, X } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import {
     getFileExtension,
@@ -9,6 +9,7 @@ import {
     isTextPreviewFile,
 } from '../../utils';
 import { invokeCommand, toAssetUrl } from '../../platform';
+import { usePreviewNavigationGestures } from '../../hooks/usePreviewNavigationGestures';
 
 const PREVIEW_CACHE_TTL_MS = 5 * 60 * 1000;
 const PREVIEW_CACHE_MAX_ITEMS = 8;
@@ -110,14 +111,13 @@ export function PreviewModal({
     const [retryCount, setRetryCount] = useState(0);
     const [isPreviewTruncated, setIsPreviewTruncated] = useState(false);
     const [previewSearchTerm, setPreviewSearchTerm] = useState('');
-    const [ocrText, setOcrText] = useState('');
-    const [ocrLoading, setOcrLoading] = useState(false);
     const latestRequestRef = useRef(0);
 
     const imagePreview = isImageFile(file);
     const textPreview = isTextPreviewFile(file);
     const docxPreview = isDocxPreviewFile(file);
     const spreadsheetPreviewEnabled = isSpreadsheetPreviewFile(file);
+    const navigationGestures = usePreviewNavigationGestures({ onNext, onPrev });
 
     useEffect(() => {
         setRetryCount(0);
@@ -128,7 +128,6 @@ export function PreviewModal({
         setSheetPreview(null);
         setIsPreviewTruncated(false);
         setPreviewSearchTerm('');
-        setOcrText('');
     }, [file.id, activeFolderId]);
 
     useEffect(() => {
@@ -249,30 +248,7 @@ export function PreviewModal({
         }).catch(() => undefined);
     }, [file.id, htmlContent, sheetPreview, textContent]);
 
-    const runOcr = async () => {
-        if (!src) return;
-        setOcrLoading(true);
-        setOcrText('');
-        try {
-            const { recognize } = await import('tesseract.js');
-            const result = await recognize(src, 'eng');
-            const text = result.data.text.trim();
-            setOcrText(text || 'No readable text found.');
-            if (text) {
-                await invokeCommand('cmd_index_file_text', {
-                    messageId: file.id,
-                    text,
-                    source: 'ocr',
-                });
-            }
-        } catch (error) {
-            setOcrText(formatPreviewError(error));
-        } finally {
-            setOcrLoading(false);
-        }
-    };
-
-    const searchableText = textContent || stripHtml(htmlContent || '') || flattenSpreadsheetPreview(sheetPreview) || ocrText;
+    const searchableText = textContent || stripHtml(htmlContent || '') || flattenSpreadsheetPreview(sheetPreview);
     const searchMatchCount = previewSearchTerm.trim()
         ? countMatches(searchableText, previewSearchTerm.trim())
         : 0;
@@ -309,7 +285,11 @@ export function PreviewModal({
     }, [onClose, onNext, onPrev]);
 
     return (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm" onClick={onClose}>
+        <div
+            className="fixed inset-0 z-[150] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm"
+            onClick={onClose}
+            {...navigationGestures}
+        >
             <div className="relative flex max-h-screen w-full max-w-6xl flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
                 <button
                     onClick={onPrev}
@@ -355,43 +335,24 @@ export function PreviewModal({
                 {!loading && !error && src && (
                     <div className="flex w-full flex-col items-center">
                         {imagePreview ? (
-                            <div className="flex max-h-[85vh] w-full items-start justify-center gap-4">
-                                <div className="flex flex-col items-center gap-3">
-                                    <img
-                                        src={src}
-                                        className="max-h-[78vh] max-w-full rounded-lg bg-black object-contain shadow-2xl"
-                                        alt="Preview"
-                                        onError={() => {
-                                            const key = getPreviewCacheKey(file.id, activeFolderId);
-                                            forgetPreview(key);
+                            <div className="flex max-h-[85vh] w-full items-start justify-center">
+                                <img
+                                    src={src}
+                                    className="max-h-[78vh] max-w-full rounded-lg bg-black object-contain shadow-2xl"
+                                    alt="Preview"
+                                    onError={() => {
+                                        const key = getPreviewCacheKey(file.id, activeFolderId);
+                                        forgetPreview(key);
 
-                                            if (retryCount < 1) {
-                                                setRetryCount((prev) => prev + 1);
-                                                setReloadNonce((prev) => prev + 1);
-                                                return;
-                                            }
+                                        if (retryCount < 1) {
+                                            setRetryCount((prev) => prev + 1);
+                                            setReloadNonce((prev) => prev + 1);
+                                            return;
+                                        }
 
-                                            setError('Failed to render image preview');
-                                        }}
-                                    />
-                                    <button
-                                        onClick={runOcr}
-                                        disabled={ocrLoading}
-                                        className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20 disabled:opacity-60"
-                                    >
-                                        <ScanText className="h-4 w-4" />
-                                        {ocrLoading ? 'Reading Text...' : 'OCR Text'}
-                                    </button>
-                                </div>
-                                {(ocrText || ocrLoading) && (
-                                    <div className="custom-scrollbar max-h-[78vh] w-full max-w-sm overflow-auto rounded-xl border border-white/10 bg-[#0b1220] p-4 text-sm leading-6 text-slate-100 shadow-2xl">
-                                        <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-white/60">
-                                            <ScanText className="h-4 w-4" />
-                                            OCR
-                                        </div>
-                                        {ocrLoading ? 'Extracting image text...' : ocrText}
-                                    </div>
-                                )}
+                                        setError('Failed to render image preview');
+                                    }}
+                                />
                             </div>
                         ) : textPreview && textContent !== null ? (
                             <div className="w-full max-w-6xl overflow-hidden rounded-xl border border-white/10 bg-[#0b1220] shadow-2xl">

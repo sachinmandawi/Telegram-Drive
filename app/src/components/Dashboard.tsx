@@ -3,7 +3,7 @@ import { AnimatePresence } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-import { TelegramFile, BandwidthStats, TelegramFolder, DriveView } from '../types';
+import { TelegramFile, BandwidthStats, TelegramFolder, DriveView, GridColumnCount } from '../types';
 import { formatBytes, friendlyDriveError, isMediaFile, isPdfFile } from '../utils';
 
 // Components
@@ -21,6 +21,7 @@ import { PdfViewer } from './dashboard/PdfViewer';
 import { DriveToolsModal } from './dashboard/DriveToolsModal';
 import { TagEditorModal } from './dashboard/TagEditorModal';
 import { FloatingCreateButton } from './dashboard/FloatingCreateButton';
+import { SettingsPage } from './dashboard/SettingsPage';
 
 // Hooks
 import { useTelegramConnection } from '../hooks/useTelegramConnection';
@@ -33,6 +34,8 @@ import { invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime } from '..
 import { useConfirm } from '../context/ConfirmContext';
 
 type MoveConflictStrategy = 'keep_both' | 'replace' | 'skip' | 'merge';
+const GRID_COLUMNS_KEY = 'gridColumns';
+const GRID_COLUMN_OPTIONS: GridColumnCount[] = [2, 3, 4, 5, 6];
 
 export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const queryClient = useQueryClient();
@@ -51,7 +54,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const [driveView, setDriveView] = useState<DriveView>('files');
     const [activeTrashFolderId, setActiveTrashFolderId] = useState<number | null>(null);
     const [trashBreadcrumbs, setTrashBreadcrumbs] = useState<{ id: number; name: string }[]>([]);
-    const [searchScope, setSearchScope] = useState<'current' | 'drive'>('current');
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
     const [showMoveModal, setShowMoveModal] = useState(false);
     const [moveConflictStrategy, setMoveConflictStrategy] = useState<MoveConflictStrategy>('keep_both');
@@ -77,12 +79,34 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const [highlightedId, setHighlightedId] = useState<number | null>(null);
     const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
     const [createMenuOpen, setCreateMenuOpen] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
+    const [gridColumns, setGridColumns] = useState<GridColumnCount>(4);
 
     useEffect(() => {
         if (driveView !== 'files' && createMenuOpen) {
             setCreateMenuOpen(false);
         }
     }, [createMenuOpen, driveView]);
+
+    useEffect(() => {
+        if (!store) return;
+        let cancelled = false;
+        store.get<number>(GRID_COLUMNS_KEY).then((saved) => {
+            if (cancelled) return;
+            if (isGridColumnCount(saved)) setGridColumns(saved);
+        }).catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, [store]);
+
+    const handleGridColumnsChange = useCallback((columns: GridColumnCount) => {
+        setGridColumns(columns);
+        if (!store) return;
+        void store.set(GRID_COLUMNS_KEY, columns)
+            .then(() => store.save())
+            .catch(() => undefined);
+    }, [store]);
 
 
     const { data: allFiles = [], isLoading, error } = useQuery({
@@ -417,7 +441,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         onEscape: handleEscape,
         onSearch: handleFocusSearch,
         onEnter: handleEnter,
-        enabled: !previewFile && !playingFile && !pdfFile && !showMoveModal && !showTools && !tagTarget // Disable when modals are open
+        enabled: !previewFile && !playingFile && !pdfFile && !showMoveModal && !showTools && !showSettings && !tagTarget // Disable when modals are open
     });
 
 
@@ -447,9 +471,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
         const timer = setTimeout(async () => {
             setIsSearching(true);
-            if (searchScope === 'current') {
-                setSearchResults(currentFolderItems.filter((file) => file.name.toLowerCase().includes(searchTerm.toLowerCase())));
-            } else if (driveView === 'trash') {
+            if (driveView === 'trash') {
                 const command = 'cmd_get_trash_files';
                 const results = await invokeCommand<any[]>(command, { query: searchTerm, folderId: driveView === 'trash' ? activeTrashFolderId : undefined });
                 setSearchResults(results.map((file) => ({
@@ -468,7 +490,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         }, 500);
 
         return () => clearTimeout(timer);
-    }, [activeTrashFolderId, currentFolderItems, driveView, folders, handleGlobalSearch, searchScope, searchTerm]);
+    }, [activeTrashFolderId, driveView, folders, handleGlobalSearch, searchTerm]);
 
 
 
@@ -496,7 +518,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 setSearchResults([]);
             }
         } else {
-            if (searchTerm.length > 2 && searchScope === 'drive' && driveView === 'files') {
+            if (searchTerm.length > 2 && driveView === 'files') {
                 await setActiveFolderId(clicked?.folderId ?? null);
                 setSearchTerm("");
                 setSearchResults([]);
@@ -1083,7 +1105,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         setShowMoveModal(true);
     }, [driveView]);
 
-    const showSearchPaths = searchTerm.length > 2 && searchScope === 'drive';
+    const showSearchPaths = searchTerm.length > 2 && driveView === 'files';
     const getDisplayedItemPath = useCallback((file: TelegramFile) => {
         return showSearchPaths ? getItemLocationLabel(file, folders) : undefined;
     }, [folders, showSearchPaths]);
@@ -1099,6 +1121,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         }
         if (showTools) {
             setShowTools(false);
+            return true;
+        }
+        if (showSettings) {
+            setShowSettings(false);
             return true;
         }
         if (showMoveModal) {
@@ -1160,6 +1186,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         previewFile,
         searchTerm,
         selectedIds.length,
+        showSettings,
         showMoveModal,
         showTools,
         tagTarget,
@@ -1247,6 +1274,17 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                         onAddAccount={handleAddAccount}
                     />
                 )}
+                {showSettings && (
+                    <SettingsPage
+                        key="settings"
+                        gridColumns={gridColumns}
+                        onGridColumnsChange={handleGridColumnsChange}
+                        onOpenTools={() => setShowTools(true)}
+                        onRepairDrive={savedMessagesDefault ? handleRepairDrive : undefined}
+                        isRepairing={isRepairingDrive}
+                        onClose={() => setShowSettings(false)}
+                    />
+                )}
                 {tagTarget && (
                     <TagEditorModal
                         key="tag-editor"
@@ -1290,9 +1328,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 isConnected={isConnected}
                 onSync={handleSyncAndStamp}
                 onLogout={handleLogout}
-                onOpenTools={() => setShowTools(true)}
-                onRepairDrive={savedMessagesDefault ? handleRepairDrive : undefined}
-                isRepairing={isRepairingDrive}
+                onOpenSettings={() => setShowSettings(true)}
                 bandwidth={bandwidth || null}
                 connectionLabel={isDesktopRuntime ? undefined : savedMessagesDefault ? 'Telegram Saved Messages' : 'Browser storage ready'}
                 mobileOpen={mobileSidebarOpen}
@@ -1314,8 +1350,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onBulkRestore={driveView === 'trash' ? handleSelectedRestore : undefined}
                     searchTerm={searchTerm}
                     onSearchChange={setSearchTerm}
-                    searchScope={searchScope}
-                    onSearchScopeChange={setSearchScope}
                     savedMessagesOnly={driveView !== 'files'}
                     onBulkTag={handleSelectedBulkTag}
                     syncStatusText={syncStatusText}
@@ -1362,6 +1396,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onToggleProtection={handleToggleProtection}
                     getItemPath={getDisplayedItemPath}
                     highlightedId={highlightedId}
+                    gridColumns={gridColumns}
                 />
             </main>
 
@@ -1524,6 +1559,10 @@ function mergeFolders(folders: TelegramFolder[]): TelegramFolder[] {
         byId.set(folder.id, folder);
     }
     return Array.from(byId.values());
+}
+
+function isGridColumnCount(value: unknown): value is GridColumnCount {
+    return typeof value === 'number' && GRID_COLUMN_OPTIONS.includes(value as GridColumnCount);
 }
 
 function protectedItemKey(item: TelegramFile): string {
