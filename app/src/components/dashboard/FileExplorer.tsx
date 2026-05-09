@@ -44,6 +44,36 @@ interface FileExplorerProps {
     highlightedId?: number | null;
 }
 
+type NavigatorWithUserAgentData = Navigator & {
+    userAgentData?: {
+        mobile?: boolean;
+    };
+};
+
+const MOBILE_GRID_MAX_TOUCH_VIEWPORT_WIDTH = 900;
+const MOBILE_GRID_MAX_TOUCH_SCREEN_SIDE = 1024;
+
+function shouldUseMobileGrid() {
+    if (typeof window === 'undefined') return false;
+
+    const userAgentDataMobile = Boolean((navigator as NavigatorWithUserAgentData).userAgentData?.mobile);
+    const userAgent = navigator.userAgent.toLowerCase();
+    const mobileUserAgent = /android|iphone|ipad|ipod|iemobile|mobile/.test(userAgent);
+    const touchCapable = (navigator.maxTouchPoints || 0) > 0 || 'ontouchstart' in window;
+    const viewportWidth = Math.min(
+        window.innerWidth || Number.POSITIVE_INFINITY,
+        document.documentElement?.clientWidth || Number.POSITIVE_INFINITY
+    );
+    const screenWidth = window.screen?.width || Number.POSITIVE_INFINITY;
+    const screenHeight = window.screen?.height || Number.POSITIVE_INFINITY;
+    const smallestScreenSide = Math.min(screenWidth, screenHeight);
+
+    return userAgentDataMobile
+        || mobileUserAgent
+        || (touchCapable && viewportWidth <= MOBILE_GRID_MAX_TOUCH_VIEWPORT_WIDTH)
+        || (touchCapable && smallestScreenSide <= MOBILE_GRID_MAX_TOUCH_SCREEN_SIDE);
+}
+
 
 function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
     const [columns, setColumns] = useState(4);
@@ -54,20 +84,36 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
 
         const updateColumns = () => {
             const width = containerRef.current?.clientWidth || 800;
-            const mobileGridQuery = window.matchMedia('(pointer: coarse), (max-width: 767px)');
             setContainerWidth(width);
-            setColumns(mobileGridQuery.matches ? 2 : 4);
+            setColumns(shouldUseMobileGrid() ? 2 : 4);
         };
 
         updateColumns();
         const observer = new ResizeObserver(updateColumns);
         observer.observe(containerRef.current);
-        const mobileGridQuery = window.matchMedia('(pointer: coarse), (max-width: 767px)');
-        mobileGridQuery.addEventListener('change', updateColumns);
+        const mobileGridQuery = window.matchMedia('(hover: none), (pointer: coarse), (max-width: 900px)');
+        const legacyMobileGridQuery = mobileGridQuery as MediaQueryList & {
+            addListener?: (listener: () => void) => void;
+            removeListener?: (listener: () => void) => void;
+        };
+        window.addEventListener('resize', updateColumns);
+        window.addEventListener('orientationchange', updateColumns);
+
+        if (typeof mobileGridQuery.addEventListener === 'function') {
+            mobileGridQuery.addEventListener('change', updateColumns);
+        } else if (typeof legacyMobileGridQuery.addListener === 'function') {
+            legacyMobileGridQuery.addListener(updateColumns);
+        }
 
         return () => {
             observer.disconnect();
-            mobileGridQuery.removeEventListener('change', updateColumns);
+            window.removeEventListener('resize', updateColumns);
+            window.removeEventListener('orientationchange', updateColumns);
+            if (typeof mobileGridQuery.removeEventListener === 'function') {
+                mobileGridQuery.removeEventListener('change', updateColumns);
+            } else if (typeof legacyMobileGridQuery.removeListener === 'function') {
+                legacyMobileGridQuery.removeListener(updateColumns);
+            }
         };
     }, [containerRef]);
 

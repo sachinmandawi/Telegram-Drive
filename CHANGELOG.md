@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.32] - 2026-05-09
+
+### Mobile Grid Fix
+
+- Made mobile grid detection more reliable in Android/iOS WebViews and mobile browsers.
+- Kept mobile/touch phone and tablet grids at 2 columns.
+- Kept desktop grids at 4 columns.
+- Bumped app, Tauri, and release versions to 1.1.32.
+
 ## [1.1.31] - 2026-05-09
 
 ### Fixed Grid Defaults
