@@ -52,6 +52,7 @@ type NavigatorWithUserAgentData = Navigator & {
 
 const MOBILE_GRID_MAX_TOUCH_VIEWPORT_WIDTH = 900;
 const MOBILE_GRID_MAX_TOUCH_SCREEN_SIDE = 1024;
+const MOBILE_GRID_MAX_CONTAINER_WIDTH = 900;
 
 function shouldUseMobileGrid() {
     if (typeof window === 'undefined') return false;
@@ -85,7 +86,7 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
         const updateColumns = () => {
             const width = containerRef.current?.clientWidth || 800;
             setContainerWidth(width);
-            setColumns(shouldUseMobileGrid() ? 2 : 4);
+            setColumns(width <= MOBILE_GRID_MAX_CONTAINER_WIDTH || shouldUseMobileGrid() ? 2 : 4);
         };
 
         updateColumns();

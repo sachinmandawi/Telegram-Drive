@@ -52,12 +52,12 @@ Telegram Drive turns your Telegram Saved Messages into a familiar drive-style fi
 
 - Full-screen Google Drive-style previews with keyboard, swipe, and horizontal-scroll navigation.
 - PDF preview loads through the unified preview source across website, desktop, and Android.
-- Mobile grids default to 2 columns with stronger Android/iOS detection, while desktop grids default to 4 columns.
+- Mobile and compact grids are forced to 2 columns, while desktop grids default to 4 columns.
 - Folder moves preserve nested children instead of flattening folder trees.
 - OCR and the heavy Tesseract dependency were removed.
 - Manual checksum verification was removed from the UI.
 - Better common Telegram format support plus native full-screen fallback previews.
-- Website, desktop, and Android APK release workflows are aligned under `v1.1.32`.
+- Website, desktop, and Android APK release workflows are aligned under `v1.1.33`.
 
 ## Features
 

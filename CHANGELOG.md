@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.33] - 2026-05-09
+
+### Force Mobile Two Column Grid
+
+- Forced compact grid containers to 2 columns so mobile WebViews cannot fall back to 4 columns.
+- Bumped app, Tauri, and release versions to 1.1.33.
+
 ## [1.1.32] - 2026-05-09
 
 ### Mobile Grid Fix
