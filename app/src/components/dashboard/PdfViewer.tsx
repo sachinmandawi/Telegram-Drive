@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { X, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Maximize, PanelLeft } from 'lucide-react';
 // Use the legacy build because the modern build uses Map.getOrInsertComputed(),
 // which isn't available in Tauri's WebKit WebView
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -28,6 +28,8 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
     const [scale, setScale] = useState<number>(1.2);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
+    const [thumbnailOpen, setThumbnailOpen] = useState(true);
+    const [activePage, setActivePage] = useState(1);
     const containerRef = useRef<HTMLDivElement>(null);
     const pdfRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
     const navigationGestures = usePreviewNavigationGestures({ onNext, onPrev });
@@ -41,6 +43,7 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
         setSourceUrl(null);
         setPdf(null);
         setNumPages(0);
+        setActivePage(1);
         setLoading(true);
         setError(null);
 
@@ -202,6 +205,12 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
         setScale(1.2);
     };
 
+    const scrollToPage = (pageNumber: number) => {
+        const page = document.getElementById(getPdfPageDomId(file.id, pageNumber));
+        page?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setActivePage(pageNumber);
+    };
+
     return (
         <div
             className="fixed inset-0 z-[200] flex flex-col bg-black/95 backdrop-blur-md animate-in fade-in duration-200"
@@ -215,6 +224,17 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
                 </div>
 
                 <div className="flex items-center gap-2 pointer-events-auto bg-black/40 backdrop-blur-md p-1.5 rounded-full border border-white/10">
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setThumbnailOpen((current) => !current);
+                        }}
+                        className={`p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors ${thumbnailOpen ? 'bg-white/10 text-white' : ''}`}
+                        title="Page thumbnails"
+                    >
+                        <PanelLeft className="w-4 h-4" />
+                    </button>
+                    <div className="w-px h-4 bg-white/20 mx-1"></div>
                     <button onClick={handleZoomOut} className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors" title="Zoom Out (-)">
                         <ZoomOut className="w-4 h-4" />
                     </button>
@@ -236,10 +256,19 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
                 <X className="w-6 h-6" />
             </button>
 
+            {pdf && thumbnailOpen && (
+                <PdfThumbnailRail
+                    pdf={pdf}
+                    numPages={numPages}
+                    activePage={activePage}
+                    onSelect={scrollToPage}
+                />
+            )}
+
             {/* Scrollable Document Container */}
             <div
                 ref={containerRef}
-                className="flex-1 w-full overflow-auto custom-scrollbar flex flex-col items-center pt-20 pb-8 relative"
+                className={`flex-1 w-full overflow-auto custom-scrollbar flex flex-col items-center pt-20 pb-8 relative transition-[padding] ${pdf && thumbnailOpen ? 'md:pl-48' : ''}`}
                 onClick={(e) => e.stopPropagation()}
             >
                 {loading && (
@@ -265,6 +294,8 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
                                 pageNumber={index + 1}
                                 pdf={pdf}
                                 scale={scale}
+                                fileId={file.id}
+                                onVisiblePage={setActivePage}
                             />
                         ))}
                     </div>
@@ -283,7 +314,19 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
 }
 
 // Individual page component, lazy-loaded via IntersectionObserver.
-function PdfPage({ pageNumber, pdf, scale }: { pageNumber: number; pdf: pdfjsLib.PDFDocumentProxy; scale: number }) {
+function PdfPage({
+    pageNumber,
+    pdf,
+    scale,
+    fileId,
+    onVisiblePage,
+}: {
+    pageNumber: number;
+    pdf: pdfjsLib.PDFDocumentProxy;
+    scale: number;
+    fileId: number;
+    onVisiblePage: (pageNumber: number) => void;
+}) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const renderTaskRef = useRef<ReturnType<pdfjsLib.PDFPageProxy['render']> | null>(null);
     const [isVisible, setIsVisible] = useState(false);
@@ -299,14 +342,15 @@ function PdfPage({ pageNumber, pdf, scale }: { pageNumber: number; pdf: pdfjsLib
             (entries) => {
                 if (entries[0].isIntersecting) {
                     setIsVisible(true);
+                    onVisiblePage(pageNumber);
                 }
             },
-            { rootMargin: '1000px 0px' }
+            { rootMargin: '1000px 0px', threshold: 0.2 }
         );
 
         observer.observe(el);
         return () => observer.disconnect();
-    }, []);
+    }, [onVisiblePage, pageNumber]);
 
     // Fetch the PDF page object when visible
     useEffect(() => {
@@ -370,6 +414,7 @@ function PdfPage({ pageNumber, pdf, scale }: { pageNumber: number; pdf: pdfjsLib
 
     return (
         <div
+            id={getPdfPageDomId(fileId, pageNumber)}
             ref={containerRef}
             className="relative flex flex-col items-center my-2 shadow-[0_10px_40px_rgba(0,0,0,0.5)] rounded-lg overflow-hidden bg-white/5 transition-shadow"
             style={{
@@ -386,4 +431,95 @@ function PdfPage({ pageNumber, pdf, scale }: { pageNumber: number; pdf: pdfjsLib
             )}
         </div>
     );
+}
+
+function PdfThumbnailRail({
+    pdf,
+    numPages,
+    activePage,
+    onSelect,
+}: {
+    pdf: pdfjsLib.PDFDocumentProxy;
+    numPages: number;
+    activePage: number;
+    onSelect: (pageNumber: number) => void;
+}) {
+    return (
+        <aside
+            className="absolute bottom-16 left-4 top-20 z-10 hidden w-40 overflow-hidden rounded-xl border border-white/10 bg-black/50 p-2 backdrop-blur-xl md:block"
+            onClick={(event) => event.stopPropagation()}
+        >
+            <div className="mb-2 px-2 text-xs font-medium uppercase tracking-[0.14em] text-white/50">Pages</div>
+            <div className="custom-scrollbar flex h-[calc(100%-1.75rem)] flex-col gap-2 overflow-auto pr-1">
+                {Array.from({ length: numPages }, (_, index) => (
+                    <PdfThumbnail
+                        key={`thumb-${index + 1}`}
+                        pdf={pdf}
+                        pageNumber={index + 1}
+                        active={activePage === index + 1}
+                        onSelect={onSelect}
+                    />
+                ))}
+            </div>
+        </aside>
+    );
+}
+
+function PdfThumbnail({
+    pdf,
+    pageNumber,
+    active,
+    onSelect,
+}: {
+    pdf: pdfjsLib.PDFDocumentProxy;
+    pageNumber: number;
+    active: boolean;
+    onSelect: (pageNumber: number) => void;
+}) {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const renderTaskRef = useRef<ReturnType<pdfjsLib.PDFPageProxy['render']> | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        const render = async () => {
+            const page = await pdf.getPage(pageNumber);
+            if (cancelled || !canvasRef.current) return;
+
+            const viewport = page.getViewport({ scale: 0.18 });
+            const canvas = canvasRef.current;
+            const context = canvas.getContext('2d');
+            if (!context) return;
+
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            context.clearRect(0, 0, viewport.width, viewport.height);
+
+            const task = page.render({ canvasContext: context, viewport, canvas });
+            renderTaskRef.current = task;
+            task.promise.catch(() => undefined);
+        };
+
+        render().catch(() => undefined);
+
+        return () => {
+            cancelled = true;
+            renderTaskRef.current?.cancel();
+            renderTaskRef.current = null;
+        };
+    }, [pdf, pageNumber]);
+
+    return (
+        <button
+            type="button"
+            onClick={() => onSelect(pageNumber)}
+            className={`group rounded-lg border p-1 text-left transition ${active ? 'border-telegram-primary bg-telegram-primary/15' : 'border-white/10 bg-white/5 hover:border-white/30 hover:bg-white/10'}`}
+        >
+            <canvas ref={canvasRef} className="mx-auto max-h-36 max-w-full rounded bg-white shadow" />
+            <div className="mt-1 text-center text-xs text-white/60 group-hover:text-white">Page {pageNumber}</div>
+        </button>
+    );
+}
+
+function getPdfPageDomId(fileId: number, pageNumber: number) {
+    return `pdf-page-${fileId}-${pageNumber}`;
 }

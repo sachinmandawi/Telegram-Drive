@@ -1,7 +1,7 @@
 {
   "name": "telegram-drive-sachin",
   "private": true,
-  "version": "1.1.35",
+  "version": "1.1.36",
   "description": "Telegram Drive browser and desktop storage app owned by Sachin Mandavi.",
   "author": "Sachin Mandavi <197530811+sachinmandawi@users.noreply.github.com>",
   "license": "MIT",
@@ -31,6 +31,7 @@
     "@tauri-apps/plugin-store": "^2.4.2",
     "@tauri-apps/plugin-updater": "^2.10.0",
     "framer-motion": "^12.26.2",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.562.0",
     "mammoth": "^1.12.0",
     "pdfjs-dist": "^5.6.205",

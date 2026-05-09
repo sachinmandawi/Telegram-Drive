@@ -38,7 +38,9 @@ const AUDIO_EXTENSIONS = ['mp3', 'wav', 'aac', 'flac', 'm4a', 'm4b', 'opus', 'og
 const MEDIA_EXTENSIONS: readonly string[] = [...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS];
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'jfif', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif', 'ico', 'heic', 'heif'] as const;
 const DOCUMENT_PREVIEW_EXTENSIONS = ['docx'] as const;
-const SPREADSHEET_PREVIEW_EXTENSIONS = ['csv', 'tsv'] as const;
+const PRESENTATION_PREVIEW_EXTENSIONS = ['pptx'] as const;
+const SPREADSHEET_PREVIEW_EXTENSIONS = ['csv', 'tsv', 'xlsx'] as const;
+const ARCHIVE_PREVIEW_EXTENSIONS = ['zip'] as const;
 const TEXT_PREVIEW_EXTENSIONS = [
     'txt', 'text', 'md', 'markdown', 'json', 'jsonl', 'csv', 'tsv', 'log',
     'ini', 'cfg', 'conf', 'yaml', 'yml', 'toml', 'xml', 'html', 'htm',
@@ -113,11 +115,25 @@ export const isDocxPreviewFile = (input: PreviewFileLike) => {
         || endsWithAny(input, DOCUMENT_PREVIEW_EXTENSIONS);
 };
 
+export const isPresentationPreviewFile = (input: PreviewFileLike) => {
+    const { mimeType } = normalizeFileLike(input);
+    return mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+        || endsWithAny(input, PRESENTATION_PREVIEW_EXTENSIONS);
+};
+
 export const isSpreadsheetPreviewFile = (input: PreviewFileLike) => {
     const { mimeType } = normalizeFileLike(input);
     return mimeType === 'text/csv'
         || mimeType === 'text/tab-separated-values'
+        || mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         || endsWithAny(input, SPREADSHEET_PREVIEW_EXTENSIONS);
+};
+
+export const isArchivePreviewFile = (input: PreviewFileLike) => {
+    const { mimeType } = normalizeFileLike(input);
+    return mimeType === 'application/zip'
+        || mimeType === 'application/x-zip-compressed'
+        || endsWithAny(input, ARCHIVE_PREVIEW_EXTENSIONS);
 };
 
 export const isPdfFile = (input: PreviewFileLike) => {
@@ -129,7 +145,7 @@ export const isPdfFile = (input: PreviewFileLike) => {
 
 export const isTextPreviewFile = (input: PreviewFileLike) => {
     const { mimeType, extension } = normalizeFileLike(input);
-    if (isSpreadsheetPreviewFile(input) || isDocxPreviewFile(input)) {
+    if (isSpreadsheetPreviewFile(input) || isDocxPreviewFile(input) || isPresentationPreviewFile(input) || isArchivePreviewFile(input)) {
         return false;
     }
 

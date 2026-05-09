@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.36] - 2026-05-09
+
+### Rich Preview Upgrade
+
+- Added image zoom, pan, double-click zoom, and reset controls in full-screen preview.
+- Added PDF page thumbnails with direct page jumping.
+- Added ZIP archive previews with file/folder counts, sizes, modified dates, and searchable entry lists.
+- Added XLSX workbook previews using a local OOXML parser without adding a vulnerable spreadsheet dependency.
+- Added PPTX slide text previews and a richer unsupported-file metadata/download view.
+- Bumped app, Tauri, and release versions to 1.1.36.
+
 ## [1.1.35] - 2026-05-09
 
 ### Folder Move Reliability
