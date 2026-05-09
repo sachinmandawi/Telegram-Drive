@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
 // Use the legacy build because the modern build uses Map.getOrInsertComputed(),
 // which isn't available in Tauri's WebKit WebView
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -211,12 +211,12 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
 
     return (
         <div
-            className="fixed inset-0 z-[200] bg-black/90 flex flex-col p-4 backdrop-blur-md animate-in fade-in duration-200"
+            className="fixed inset-0 z-[200] flex flex-col bg-black/95 backdrop-blur-md animate-in fade-in duration-200"
             onClick={onClose}
             {...navigationGestures}
         >
             {/* Header / Controls */}
-            <div className="absolute top-4 left-0 right-0 flex justify-between items-center px-8 z-10 pointer-events-none">
+            <div className="absolute top-4 left-0 right-0 z-10 flex items-center justify-between px-8 pr-20 pointer-events-none">
                 <div className="text-white bg-black/40 backdrop-blur-md px-4 py-2 rounded-full pointer-events-auto border border-white/10">
                     <h3 className="text-sm font-medium px-2 max-w-sm truncate">{file.name}</h3>
                 </div>
@@ -235,23 +235,6 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
                     </button>
                 </div>
             </div>
-
-            {/* Navigation Buttons */}
-            <button
-                onClick={(e) => { e.stopPropagation(); onPrev?.(); }}
-                className="absolute left-4 top-1/2 -translate-y-1/2 p-3 text-white/50 hover:text-white bg-black/40 backdrop-blur-md hover:bg-black/60 rounded-full transition-all z-10 border border-white/10"
-                title="Previous file (ArrowLeft / J)"
-            >
-                <ChevronLeft className="w-6 h-6" />
-            </button>
-
-            <button
-                onClick={(e) => { e.stopPropagation(); onNext?.(); }}
-                className="absolute right-4 top-1/2 -translate-y-1/2 p-3 text-white/50 hover:text-white bg-black/40 backdrop-blur-md hover:bg-black/60 rounded-full transition-all z-10 border border-white/10"
-                title="Next file (ArrowRight / L)"
-            >
-                <ChevronRight className="w-6 h-6" />
-            </button>
 
             <button
                 onClick={onClose}

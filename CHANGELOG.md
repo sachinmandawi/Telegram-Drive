@@ -8,7 +8,7 @@
 - Removed OCR text extraction and the Tesseract dependency.
 - Added a separate Settings page with saved grid column options: 2, 3, 4, 5, and 6 columns, defaulting to 4.
 - Kept the floating plus menu action boxes the same size and blurred the plus button behind the open menu.
-- Added left/right swipe and horizontal scroll navigation for preview screens.
+- Made preview screens full-screen, removed visible left/right arrow buttons, and kept keyboard/swipe/horizontal-scroll navigation.
 - Expanded common Telegram media/file type detection for image, video, audio, subtitle, and text previews.
 - Bumped app, Tauri, and release versions to 1.1.30.
 

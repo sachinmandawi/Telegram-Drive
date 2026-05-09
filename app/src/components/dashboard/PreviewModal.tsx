@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, File, FileText, Search, Table2, X } from 'lucide-react';
+import { File, FileText, Search, Table2, X } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import {
     getFileExtension,
@@ -286,32 +286,14 @@ export function PreviewModal({
 
     return (
         <div
-            className="fixed inset-0 z-[150] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[150] flex items-center justify-center bg-black/95 backdrop-blur-sm"
             onClick={onClose}
             {...navigationGestures}
         >
-            <div className="relative flex max-h-screen w-full max-w-6xl flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
-                <button
-                    onClick={onPrev}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 transition-colors hover:bg-black/80"
-                    style={{ color: '#ffffff' }}
-                    title="Previous (ArrowLeft / J)"
-                >
-                    <ChevronLeft className="h-6 w-6" />
-                </button>
-
-                <button
-                    onClick={onNext}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 transition-colors hover:bg-black/80"
-                    style={{ color: '#ffffff' }}
-                    title="Next (ArrowRight / L)"
-                >
-                    <ChevronRight className="h-6 w-6" />
-                </button>
-
+            <div className="relative flex h-full w-full flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
                 <button
                     onClick={onClose}
-                    className="absolute -top-12 right-0 rounded-full bg-black/60 p-2 transition-colors hover:bg-black/80"
+                    className="absolute right-4 top-4 z-20 rounded-full bg-black/60 p-2 transition-colors hover:bg-black/80"
                     style={{ color: '#ffffff' }}
                 >
                     <X className="h-6 w-6" />
@@ -333,12 +315,12 @@ export function PreviewModal({
                 )}
 
                 {!loading && !error && src && (
-                    <div className="flex w-full flex-col items-center">
+                    <div className="flex h-full w-full flex-col items-center justify-center">
                         {imagePreview ? (
-                            <div className="flex max-h-[85vh] w-full items-start justify-center">
+                            <div className="flex h-full w-full items-center justify-center">
                                 <img
                                     src={src}
-                                    className="max-h-[78vh] max-w-full rounded-lg bg-black object-contain shadow-2xl"
+                                    className="max-h-[100dvh] max-w-[100vw] bg-black object-contain"
                                     alt="Preview"
                                     onError={() => {
                                         const key = getPreviewCacheKey(file.id, activeFolderId);
@@ -355,26 +337,26 @@ export function PreviewModal({
                                 />
                             </div>
                         ) : textPreview && textContent !== null ? (
-                            <div className="w-full max-w-6xl overflow-hidden rounded-xl border border-white/10 bg-[#0b1220] shadow-2xl">
+                            <div className="h-full w-full overflow-hidden bg-[#0b1220]">
                                 <PreviewHeader
                                     icon={<FileText className="h-4 w-4" />}
                                     label={getTextPreviewLabel(file)}
                                     hint={isPreviewTruncated ? 'Preview trimmed for speed' : undefined}
                                     extra={<PreviewSearch value={previewSearchTerm} onChange={setPreviewSearchTerm} matches={searchMatchCount} />}
                                 />
-                                <pre className="custom-scrollbar max-h-[calc(85vh-3rem)] overflow-auto whitespace-pre-wrap break-words px-5 py-4 font-mono text-sm leading-6 text-slate-100">
+                                <pre className="custom-scrollbar h-[calc(100dvh-3rem)] overflow-auto whitespace-pre-wrap break-words px-5 py-4 font-mono text-sm leading-6 text-slate-100">
                                     {renderHighlightedText(textContent, previewSearchTerm)}
                                 </pre>
                             </div>
                         ) : docxPreview && htmlContent !== null ? (
-                            <div className="w-full max-w-5xl overflow-hidden rounded-xl border border-white/10 bg-[#0d1527] shadow-2xl">
+                            <div className="h-full w-full overflow-hidden bg-[#0d1527]">
                                 <PreviewHeader
                                     icon={<FileText className="h-4 w-4" />}
                                     label="Document preview"
                                     hint={isPreviewTruncated ? 'Some large sections may be condensed' : undefined}
                                     extra={<PreviewSearch value={previewSearchTerm} onChange={setPreviewSearchTerm} matches={searchMatchCount} />}
                                 />
-                                <div className="custom-scrollbar max-h-[calc(85vh-3rem)] overflow-auto px-6 py-5 text-sm leading-7 text-slate-100">
+                                <div className="custom-scrollbar h-[calc(100dvh-3rem)] overflow-auto px-6 py-5 text-sm leading-7 text-slate-100">
                                     <div
                                         className="prose prose-invert max-w-none prose-headings:text-white prose-p:text-slate-100 prose-li:text-slate-100 prose-strong:text-white prose-a:text-telegram-primary"
                                         dangerouslySetInnerHTML={{ __html: htmlContent }}
@@ -382,14 +364,14 @@ export function PreviewModal({
                                 </div>
                             </div>
                         ) : spreadsheetPreviewEnabled && sheetPreview ? (
-                            <div className="w-full max-w-6xl overflow-hidden rounded-xl border border-white/10 bg-[#0b1220] shadow-2xl">
+                            <div className="h-full w-full overflow-hidden bg-[#0b1220]">
                                 <PreviewHeader
                                     icon={<Table2 className="h-4 w-4" />}
                                     label="Spreadsheet preview"
                                     hint={sheetPreview.truncated ? 'Large sheets were trimmed for fast preview' : undefined}
                                     extra={<PreviewSearch value={previewSearchTerm} onChange={setPreviewSearchTerm} matches={searchMatchCount} />}
                                 />
-                                <div className="custom-scrollbar max-h-[calc(85vh-3rem)] overflow-auto px-4 py-4">
+                                <div className="custom-scrollbar h-[calc(100dvh-3rem)] overflow-auto px-4 py-4">
                                     <div className="flex flex-col gap-6">
                                         {sheetPreview.sheets.length === 0 ? (
                                             <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-6 text-sm text-white/70">
@@ -432,7 +414,7 @@ export function PreviewModal({
                                 </div>
                             </div>
                         ) : (
-                            <div className="rounded-xl border border-white/10 bg-[#1c1c1c] p-8 text-center shadow-2xl">
+                            <div className="flex h-full w-full flex-col items-center justify-center bg-[#1c1c1c] p-8 text-center">
                                 <File className="mx-auto mb-4 h-16 w-16 text-telegram-primary" />
                                 <h3 className="mb-2 text-xl font-medium text-white">{file.name}</h3>
                                 <p className="mb-6 text-gray-400">Inline preview is not available for this format yet.</p>
@@ -442,7 +424,7 @@ export function PreviewModal({
                     </div>
                 )}
 
-                <div className="absolute bottom-[-3rem] text-sm text-white opacity-50">
+                <div className="absolute bottom-4 left-1/2 max-w-[calc(100vw-2rem)] -translate-x-1/2 truncate rounded-full bg-black/45 px-3 py-1.5 text-sm text-white/70 backdrop-blur">
                     {file.name}
                     {typeof currentIndex === 'number' && typeof totalItems === 'number' && totalItems > 0 && (
                         <span className="ml-3">{currentIndex + 1}/{totalItems}</span>
@@ -455,7 +437,7 @@ export function PreviewModal({
 
 function PreviewHeader({ icon, label, hint, extra }: { icon: ReactNode; label: string; hint?: string; extra?: ReactNode }) {
     return (
-        <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3 text-xs text-white/60">
+        <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3 pr-16 text-xs text-white/60">
             <span className="flex items-center gap-2 uppercase tracking-[0.18em]">
                 {icon}
                 {label}
