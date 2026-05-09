@@ -44,7 +44,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     const {
         store, folders, activeFolderId, setActiveFolderId, isSyncing, isConnected,
-        handleLogout, handleSyncFolders, handleCreateFolder, handleFolderDelete
+        handleLogout, handleSyncFolders, handleCreateFolder, handleFolderDelete, applyFolderParentMove
     } = useTelegramConnection(onLogout);
 
 
@@ -357,6 +357,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             }
             if (folderIds.length > 0) {
                 await invokeCommand('cmd_move_folders', { folderIds, targetParentId: targetFolderId, conflictStrategy, ...targetHint });
+                if (conflictStrategy === 'keep_both') {
+                    await applyFolderParentMove(folderIds, targetFolderId);
+                }
             }
             if (savedMessagesDefault) await invokeCommand('cmd_flush_manifest').catch(() => undefined);
             setShowMoveModal(false);
@@ -368,7 +371,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         } catch (e) {
             toast.error(`Move failed: ${friendlyDriveError(e)}`);
         }
-    }, [displayedFiles, ensureProtectedAccess, folders, handleSyncAndStamp, moveConflictStrategy, queryClient, savedMessagesDefault, selectedIds]);
+    }, [applyFolderParentMove, displayedFiles, ensureProtectedAccess, folders, handleSyncAndStamp, moveConflictStrategy, queryClient, savedMessagesDefault, selectedIds]);
 
     const handleKeyboardDelete = useCallback(() => {
         if (selectedIds.length > 0) {
@@ -650,6 +653,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
                 if (folderIds.length > 0) {
                     await invokeCommand('cmd_move_folders', { folderIds, targetParentId: targetFolderId, conflictStrategy: 'keep_both', ...targetHint });
+                    await applyFolderParentMove(folderIds, targetFolderId);
                 }
                 for (const [sourceFolderId, messageIds] of filesBySourceFolder) {
                     await invokeCommand('cmd_move_files', {

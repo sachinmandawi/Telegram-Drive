@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.35] - 2026-05-09
+
+### Folder Move Reliability
+
+- Fixed moving a folder from one folder into another root folder, including sidebar drag-and-drop targets such as moving `alfas` from `A` into `B`.
+- Replayed folder move manifest events from `folderIds` so moved folders stay in the right parent after sync, reload, and cross-device manifest merge.
+- Updated local folder state immediately after successful moves so the website reflects the destination without waiting for Telegram search refresh.
+- Bumped app, Tauri, and release versions to 1.1.35.
+
 ## [1.1.34] - 2026-05-09
 
 ### Mobile Grid Lifecycle Fix

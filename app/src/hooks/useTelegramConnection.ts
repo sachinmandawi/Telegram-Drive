@@ -275,6 +275,30 @@ export function useTelegramConnection(onLogoutParent: () => void) {
         }
     };
 
+    const applyFolderParentMove = async (folderIds: number[], targetParentId: number | null) => {
+        if (!store || folderIds.length === 0) return;
+        const movingIds = pruneNestedFolderIds(folderIds, foldersRef.current);
+        if (movingIds.size === 0) return;
+
+        const updatedAt = new Date().toISOString();
+        const updated = foldersRef.current.map((folder) => {
+            if (!movingIds.has(folder.id)) return folder;
+            const next: TelegramFolder = { ...folder, updatedAt };
+            if (targetParentId === null) {
+                delete next.parent_id;
+            } else {
+                next.parent_id = targetParentId;
+            }
+            return next;
+        });
+
+        foldersRef.current = updated;
+        setFolders(updated);
+        await store.set('folders', updated);
+        await store.save();
+        queryClient.invalidateQueries({ queryKey: ['files'] });
+    };
+
     return {
         store,
         folders,
@@ -286,6 +310,7 @@ export function useTelegramConnection(onLogoutParent: () => void) {
         handleSyncFolders,
         handleCreateFolder,
         handleFolderDelete,
+        applyFolderParentMove,
         isNetworkError,
         forceLogout
     };
@@ -318,4 +343,29 @@ function collectFolderTreeIds(folderId: number, folders: TelegramFolder[]): Set<
     }
 
     return ids;
+}
+
+function pruneNestedFolderIds(folderIds: number[], folders: TelegramFolder[]): Set<number> {
+    const requested = new Set(folderIds.filter((id) => Number.isFinite(id)));
+    const pruned = new Set<number>();
+
+    for (const folderId of requested) {
+        let current = folders.find((folder) => folder.id === folderId);
+        let nestedUnderSelectedParent = false;
+        const seen = new Set<number>();
+
+        while (current && !seen.has(current.id)) {
+            seen.add(current.id);
+            const parentId = getFolderParentId(current);
+            if (parentId !== null && requested.has(parentId)) {
+                nestedUnderSelectedParent = true;
+                break;
+            }
+            current = parentId === null ? undefined : folders.find((folder) => folder.id === parentId);
+        }
+
+        if (!nestedUnderSelectedParent) pruned.add(folderId);
+    }
+
+    return pruned;
 }

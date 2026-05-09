@@ -404,7 +404,14 @@ export async function telegramMoveFolders(
         if (moveFolderToParentWithConflict(manifest, folderId, targetParentId, strategy, updatedAt)) moved++;
     }
 
-    appendManifestEvent(manifest, 'folder_moved', { folderIds: Array.from(moving), moved, targetParentId, conflictStrategy: strategy });
+    const movedFolderIds = Array.from(moving);
+    appendManifestEvent(manifest, 'folder_moved', {
+        folderId: movedFolderIds[0],
+        folderIds: movedFolderIds,
+        moved,
+        targetParentId,
+        conflictStrategy: strategy,
+    });
     await saveDriveManifest(manifest, 'debounced');
     return true;
 }
@@ -2245,24 +2252,11 @@ function applyFolderLifecycleEvents(
     const normalized = folders.map(normalizeFolderRecord);
 
     for (const event of events) {
-        const folderId = Number(event.payload?.folderId);
-        if (!Number.isFinite(folderId)) continue;
-
-        if (event.type === 'folder_created') {
-            const name = typeof event.payload?.name === 'string' ? event.payload.name : `Folder ${folderId}`;
-            const parentId = event.payload?.parentId === null || event.payload?.parentId === undefined
-                ? null
-                : Number(event.payload.parentId);
-            const folder: TelegramFolder = { id: folderId, name };
-            if (Number.isFinite(parentId as number)) folder.parent_id = parentId as number;
-            replaceManifestFolder(normalized, folder);
-            continue;
-        }
-
         if (event.type === 'folder_moved') {
             const folderIds = Array.isArray(event.payload?.folderIds)
                 ? event.payload.folderIds.map(Number).filter(Number.isFinite)
-                : [folderId];
+                : [Number(event.payload?.folderId)].filter(Number.isFinite);
+            if (folderIds.length === 0) continue;
             const parentId = event.payload?.targetParentId === null || event.payload?.targetParentId === undefined
                 ? null
                 : Number(event.payload.targetParentId);
@@ -2275,6 +2269,20 @@ function applyFolderLifecycleEvents(
                     updatedAt: laterTimestamp(folder.updatedAt, event.at),
                 });
             }
+            continue;
+        }
+
+        const folderId = Number(event.payload?.folderId ?? event.payload?.id);
+        if (!Number.isFinite(folderId)) continue;
+
+        if (event.type === 'folder_created') {
+            const name = typeof event.payload?.name === 'string' ? event.payload.name : `Folder ${folderId}`;
+            const parentId = event.payload?.parentId === null || event.payload?.parentId === undefined
+                ? null
+                : Number(event.payload.parentId);
+            const folder: TelegramFolder = { id: folderId, name };
+            if (Number.isFinite(parentId as number)) folder.parent_id = parentId as number;
+            replaceManifestFolder(normalized, folder);
             continue;
         }
 
