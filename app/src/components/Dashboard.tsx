@@ -3,7 +3,7 @@ import { AnimatePresence } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-import { TelegramFile, BandwidthStats, TelegramFolder, DriveView, GridColumnCount } from '../types';
+import { TelegramFile, BandwidthStats, TelegramFolder, DriveView } from '../types';
 import { formatBytes, friendlyDriveError, isMediaFile, isPdfFile } from '../utils';
 
 // Components
@@ -34,8 +34,6 @@ import { invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime } from '..
 import { useConfirm } from '../context/ConfirmContext';
 
 type MoveConflictStrategy = 'keep_both' | 'replace' | 'skip' | 'merge';
-const GRID_COLUMNS_KEY = 'gridColumns';
-const GRID_COLUMN_OPTIONS: GridColumnCount[] = [2, 3, 4, 5, 6];
 
 export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const queryClient = useQueryClient();
@@ -80,33 +78,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
     const [createMenuOpen, setCreateMenuOpen] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
-    const [gridColumns, setGridColumns] = useState<GridColumnCount>(4);
 
     useEffect(() => {
         if (driveView !== 'files' && createMenuOpen) {
             setCreateMenuOpen(false);
         }
     }, [createMenuOpen, driveView]);
-
-    useEffect(() => {
-        if (!store) return;
-        let cancelled = false;
-        store.get<number>(GRID_COLUMNS_KEY).then((saved) => {
-            if (cancelled) return;
-            if (isGridColumnCount(saved)) setGridColumns(saved);
-        }).catch(() => undefined);
-        return () => {
-            cancelled = true;
-        };
-    }, [store]);
-
-    const handleGridColumnsChange = useCallback((columns: GridColumnCount) => {
-        setGridColumns(columns);
-        if (!store) return;
-        void store.set(GRID_COLUMNS_KEY, columns)
-            .then(() => store.save())
-            .catch(() => undefined);
-    }, [store]);
 
 
     const { data: allFiles = [], isLoading, error } = useQuery({
@@ -918,16 +895,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         }
     }, [displayedFileItems, queryClient, selectedIds, tagTarget]);
 
-    const handleVerifyFile = useCallback(async (file: TelegramFile) => {
-        try {
-            const result = await invokeCommand<{ valid: boolean }>('cmd_verify_file', { messageId: file.id });
-            queryClient.invalidateQueries({ queryKey: ['files'] });
-            toast.success(result.valid ? 'Checksum verified' : 'Checksum mismatch detected');
-        } catch (e) {
-            toast.error(`Verify failed: ${friendlyDriveError(e)}`);
-        }
-    }, [queryClient]);
-
     const handleRenameItem = useCallback(async (file: TelegramFile) => {
         if (!await ensureProtectedAccess(file, 'rename')) return;
         const nextName = window.prompt('Rename', file.name)?.trim();
@@ -1277,8 +1244,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 {showSettings && (
                     <SettingsPage
                         key="settings"
-                        gridColumns={gridColumns}
-                        onGridColumnsChange={handleGridColumnsChange}
                         onOpenTools={() => setShowTools(true)}
                         onRepairDrive={savedMessagesDefault ? handleRepairDrive : undefined}
                         isRepairing={isRepairingDrive}
@@ -1385,7 +1350,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onDragEnd={() => setTimeout(() => setInternalDragFileId(null), 50)}
                     onRestore={handleRestoreFile}
                     onEditTags={(file) => setTagTarget(file)}
-                    onVerify={handleVerifyFile}
                     onRename={handleRenameItem}
                     onSetFolderColor={handleFolderColor}
                     onShowVersions={handleShowVersions}
@@ -1396,7 +1360,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onToggleProtection={handleToggleProtection}
                     getItemPath={getDisplayedItemPath}
                     highlightedId={highlightedId}
-                    gridColumns={gridColumns}
                 />
             </main>
 
@@ -1559,10 +1522,6 @@ function mergeFolders(folders: TelegramFolder[]): TelegramFolder[] {
         byId.set(folder.id, folder);
     }
     return Array.from(byId.values());
-}
-
-function isGridColumnCount(value: unknown): value is GridColumnCount {
-    return typeof value === 'number' && GRID_COLUMN_OPTIONS.includes(value as GridColumnCount);
 }
 
 function protectedItemKey(item: TelegramFile): string {

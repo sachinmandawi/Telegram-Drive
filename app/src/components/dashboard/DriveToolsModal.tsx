@@ -168,8 +168,6 @@ export function DriveToolsModal({
                                 <Metric label="Trash" value={String(stats.trashedFiles)} />
                                 <Metric label="Duplicates" value={String(stats.duplicateFiles)} />
                                 <Metric label="Text Indexed" value={String(stats.indexedTextFiles)} />
-                                <Metric label="Verified" value={String(stats.verifiedFiles)} />
-                                <Metric label="Mismatches" value={String(stats.checksumMismatches)} danger={stats.checksumMismatches > 0} />
                             </div>
                         ) : (
                             <Loading />

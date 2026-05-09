@@ -1,7 +1,6 @@
 import type {
     DriveHealthWarning,
     DriveStats,
-    IntegrityResult,
     OfflineCacheStats,
     RecoveryItem,
     TelegramAccountInfo,
@@ -1040,7 +1039,6 @@ export async function telegramGetStorageHealth(): Promise<DriveHealthWarning[]> 
     };
 
     if (stats.missingFiles > 0) add(`${stats.missingFiles} indexed file(s) are missing from Telegram`, 'Missing files', 'danger', stats.missingFiles, 'Run Repair Index');
-    if (stats.checksumMismatches > 0) add(`${stats.checksumMismatches} checksum mismatch(es) need review`, 'Integrity', 'danger', stats.checksumMismatches, 'Verify or replace');
     if (failedOps.length > 0) add(`${failedOps.length} sync operation(s) failed`, 'Recovery', 'warning', failedOps.length, 'Open Recovery Center');
     if (pendingOps.length > 0) add(`${pendingOps.length} sync operation(s) are still pending`, 'Sync queue', 'info', pendingOps.length, 'Retry or wait');
     if (stats.trashedBytes > 250 * 1024 * 1024) add(`Trash is using ${formatBytes(stats.trashedBytes)}`, 'Trash', 'warning', stats.trashedBytes, 'Cleanup trash');
@@ -1114,37 +1112,6 @@ export async function telegramPermanentlyDeleteFolder(folderId: number): Promise
     await permanentlyDeleteFolderFromManifest(manifest, folderId, client);
     await saveDriveManifest(manifest, 'debounced');
     return true;
-}
-
-export async function telegramVerifyFile(messageId: number): Promise<IntegrityResult> {
-    const manifest = await getDriveManifest();
-    const record = manifest.files[String(messageId)];
-    if (!record?.checksum) {
-        throw new Error('No checksum is stored for this file yet.');
-    }
-
-    const message = await getTelegramMessage(messageId);
-    const client = await authorizedTelegramClient();
-    const bytes = await downloadMessageBytes(client, message);
-    const blob = new Blob([bytes], { type: message.file?.mimeType || 'application/octet-stream' });
-    const checksum = await sha256Blob(blob);
-    const valid = checksum === record.checksum;
-
-    manifest.files[String(messageId)] = {
-        ...record,
-        checksumVerifiedAt: new Date().toISOString(),
-        integrityStatus: valid ? 'valid' : 'mismatch',
-        updatedAt: new Date().toISOString(),
-    };
-    appendManifestEvent(manifest, 'file_verified', { messageId, valid, checksum });
-    await saveDriveManifest(manifest, 'debounced');
-
-    return {
-        messageId,
-        checksum,
-        expectedChecksum: record.checksum,
-        valid,
-    };
 }
 
 export async function telegramIndexFileText(messageId: number, text: string): Promise<boolean> {

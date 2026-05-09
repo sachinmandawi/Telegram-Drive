@@ -414,11 +414,25 @@ export function PreviewModal({
                                 </div>
                             </div>
                         ) : (
-                            <div className="flex h-full w-full flex-col items-center justify-center bg-[#1c1c1c] p-8 text-center">
-                                <File className="mx-auto mb-4 h-16 w-16 text-telegram-primary" />
-                                <h3 className="mb-2 text-xl font-medium text-white">{file.name}</h3>
-                                <p className="mb-6 text-gray-400">Inline preview is not available for this format yet.</p>
-                                <p className="text-xs text-gray-500">File type: {getFileExtension(file) || 'unknown'}</p>
+                            <div className="h-full w-full overflow-hidden bg-[#111827]">
+                                <PreviewHeader
+                                    icon={<File className="h-4 w-4" />}
+                                    label={getNativePreviewLabel(file)}
+                                    hint="Native preview"
+                                />
+                                <object
+                                    data={src}
+                                    type={file.mime_type || undefined}
+                                    className="h-[calc(100dvh-3rem)] w-full bg-white"
+                                    aria-label={file.name}
+                                >
+                                    <div className="flex h-full w-full flex-col items-center justify-center bg-[#1c1c1c] p-8 text-center">
+                                        <File className="mx-auto mb-4 h-16 w-16 text-telegram-primary" />
+                                        <h3 className="mb-2 max-w-xl truncate text-xl font-medium text-white">{file.name}</h3>
+                                        <p className="text-sm text-gray-400">This device cannot render this file inline.</p>
+                                        <p className="mt-2 text-xs text-gray-500">File type: {getFileExtension(file) || 'unknown'}</p>
+                                    </div>
+                                </object>
                             </div>
                         )}
                     </div>
@@ -676,6 +690,13 @@ function getTextPreviewLabel(file: TelegramFile) {
     if (ext) return `${ext} preview`;
     if (file.mime_type) return `${file.mime_type} preview`;
     return 'Text preview';
+}
+
+function getNativePreviewLabel(file: TelegramFile) {
+    const ext = getFileExtension(file);
+    if (ext) return `${ext} preview`;
+    if (file.mime_type) return `${file.mime_type} preview`;
+    return 'File preview';
 }
 
 function formatPreviewError(error: unknown): string {

@@ -1,7 +1,6 @@
 import type {
     BandwidthStats,
     DriveStats,
-    IntegrityResult,
     OfflineCacheStats,
     TelegramFile,
     TelegramFolder,
@@ -54,7 +53,6 @@ import {
     telegramToggleLockItem,
     telegramUnlockProtectedItem,
     telegramUploadFile,
-    telegramVerifyFile,
 } from './telegramBrowser';
 
 export interface AppStore {
@@ -519,8 +517,6 @@ async function invokeBrowserCommand<T>(command: string, args: CommandArgs): Prom
                 tags: Array.isArray(args.tags) ? args.tags.map(String).map((tag) => tag.trim().toLowerCase()).filter(Boolean) : [],
             }));
             return true as T;
-        case 'cmd_verify_file':
-            return await verifyWebFile(Number(args.messageId)) as T;
         case 'cmd_index_file_text':
             await updateWebFile(Number(args.messageId), (record) => ({
                 ...record,
@@ -639,8 +635,6 @@ async function invokeBrowserTelegramCommand<T>(command: string, args: CommandArg
             return await telegramGetOfflineCacheStats() as T;
         case 'cmd_clear_offline_cache':
             return await telegramClearOfflineCache() as T;
-        case 'cmd_verify_file':
-            return await telegramVerifyFile(Number(args.messageId)) as T;
         case 'cmd_index_file_text':
             return await telegramIndexFileText(
                 Number(args.messageId),
@@ -974,20 +968,6 @@ async function getWebDriveStats(): Promise<DriveStats> {
         largestFiles: active.slice().sort((a, b) => b.size - a.size).slice(0, 8).map(toTelegramFile),
         types: [],
         updatedAt: new Date().toISOString(),
-    };
-}
-
-async function verifyWebFile(messageId: number): Promise<IntegrityResult> {
-    const record = await getWebFile(messageId);
-    if (!record) throw new Error('File not found');
-    const checksum = await sha256Blob(record.blob);
-    const valid = !record.checksum || checksum === record.checksum;
-    await putWebFile({ ...record, checksum, integrityStatus: valid ? 'valid' : 'mismatch' });
-    return {
-        messageId,
-        checksum,
-        expectedChecksum: record.checksum,
-        valid,
     };
 }
 

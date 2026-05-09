@@ -3,7 +3,7 @@ import { Plus, ArrowUpDown, ArrowUp, ArrowDown, FolderPlus } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { FileCard } from './FileCard';
 import { EmptyState } from './EmptyState';
-import { GridColumnCount, TelegramFile } from '../../types';
+import { TelegramFile } from '../../types';
 import { ContextMenu } from './ContextMenu';
 import { FileListItem } from './FileListItem';
 
@@ -32,7 +32,6 @@ interface FileExplorerProps {
     onDragEnd?: () => void;
     onRestore?: (file: TelegramFile) => void;
     onEditTags?: (file: TelegramFile) => void;
-    onVerify?: (file: TelegramFile) => void;
     onRename?: (file: TelegramFile) => void;
     onSetFolderColor?: (file: TelegramFile, color: string) => void;
     onShowVersions?: (file: TelegramFile) => void;
@@ -43,11 +42,10 @@ interface FileExplorerProps {
     onToggleProtection?: (file: TelegramFile) => void;
     getItemPath?: (file: TelegramFile) => string | undefined;
     highlightedId?: number | null;
-    gridColumns?: GridColumnCount;
 }
 
 
-function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>, preferredColumns: GridColumnCount = 4) {
+function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>) {
     const [columns, setColumns] = useState(4);
     const [containerWidth, setContainerWidth] = useState(800);
 
@@ -56,32 +54,36 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>, pr
 
         const updateColumns = () => {
             const width = containerRef.current?.clientWidth || 800;
+            const mobileGridQuery = window.matchMedia('(pointer: coarse), (max-width: 767px)');
             setContainerWidth(width);
-            setColumns(preferredColumns);
+            setColumns(mobileGridQuery.matches ? 2 : 4);
         };
 
         updateColumns();
         const observer = new ResizeObserver(updateColumns);
         observer.observe(containerRef.current);
+        const mobileGridQuery = window.matchMedia('(pointer: coarse), (max-width: 767px)');
+        mobileGridQuery.addEventListener('change', updateColumns);
 
         return () => {
             observer.disconnect();
+            mobileGridQuery.removeEventListener('change', updateColumns);
         };
-    }, [containerRef, preferredColumns]);
+    }, [containerRef]);
 
     return { columns, containerWidth };
 }
 
 export function FileExplorer({
     files, loading, error, viewMode, selectedIds, activeFolderId,
-    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMove, onMergeFolder, onToggleLock, onToggleProtection, getItemPath, highlightedId, gridColumns = 4
+    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onRename, onSetFolderColor, onShowVersions, onCopy, onMove, onMergeFolder, onToggleLock, onToggleProtection, getItemPath, highlightedId
 }: FileExplorerProps) {
     const [sortField, setSortField] = useState<SortField>('name');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: TelegramFile } | null>(null);
 
     const parentRef = useRef<HTMLDivElement>(null);
-    const { columns, containerWidth } = useGridColumns(parentRef, gridColumns);
+    const { columns, containerWidth } = useGridColumns(parentRef);
     const selectionMode = selectedIds.length > 0;
 
     const GAP = containerWidth < 640 ? 12 : 6;
@@ -427,10 +429,6 @@ export function FileExplorer({
                     } : undefined}
                     onEditTags={onEditTags ? () => {
                         onEditTags(contextMenu.file);
-                        setContextMenu(null);
-                    } : undefined}
-                    onVerify={onVerify ? () => {
-                        onVerify(contextMenu.file);
                         setContextMenu(null);
                     } : undefined}
                     onRename={onRename ? () => {

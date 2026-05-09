@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, Copy, Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, RotateCcw, Tag, Shield, ShieldCheck, ShieldOff, History, Lock, UnlockKeyhole, Combine, FolderInput } from 'lucide-react';
+import { CheckCircle2, Copy, Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, RotateCcw, Tag, Shield, ShieldOff, History, Lock, UnlockKeyhole, Combine, FolderInput } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { isMediaFile, isPdfFile } from '../../utils';
 
@@ -14,7 +14,6 @@ interface ContextMenuProps {
     onRestore?: () => void;
     onSelect?: () => void;
     onEditTags?: () => void;
-    onVerify?: () => void;
     onRename?: () => void;
     onSetFolderColor?: (color: string) => void;
     onShowVersions?: () => void;
@@ -25,7 +24,7 @@ interface ContextMenuProps {
     onToggleProtection?: () => void;
 }
 
-export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onRestore, onSelect, onEditTags, onVerify, onRename, onSetFolderColor, onShowVersions, onCopy, onMove, onMergeFolder, onToggleLock, onToggleProtection }: ContextMenuProps) {
+export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onRestore, onSelect, onEditTags, onRename, onSetFolderColor, onShowVersions, onCopy, onMove, onMergeFolder, onToggleLock, onToggleProtection }: ContextMenuProps) {
     const [adjustedPos, setAdjustedPos] = useState({ x, y });
     const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -199,13 +198,6 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
                 <button onClick={onEditTags} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
                     <Tag className="w-4 h-4 text-telegram-primary" />
                     Tags
-                </button>
-            )}
-
-            {file.type !== 'folder' && onVerify && (
-                <button onClick={onVerify} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
-                    <ShieldCheck className="w-4 h-4 text-green-400" />
-                    Verify Checksum
                 </button>
             )}
 

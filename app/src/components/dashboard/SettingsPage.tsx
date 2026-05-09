@@ -1,21 +1,14 @@
-import { LayoutGrid, Moon, SlidersHorizontal, Sun, Wrench, X, type LucideIcon } from 'lucide-react';
-import { GridColumnCount } from '../../types';
+import { Moon, SlidersHorizontal, Sun, Wrench, X, type LucideIcon } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 
 interface SettingsPageProps {
-    gridColumns: GridColumnCount;
-    onGridColumnsChange: (columns: GridColumnCount) => void;
     onOpenTools: () => void;
     onRepairDrive?: () => void;
     isRepairing?: boolean;
     onClose: () => void;
 }
 
-const GRID_COLUMN_OPTIONS: GridColumnCount[] = [2, 3, 4, 5, 6];
-
 export function SettingsPage({
-    gridColumns,
-    onGridColumnsChange,
     onOpenTools,
     onRepairDrive,
     isRepairing = false,
@@ -42,26 +35,6 @@ export function SettingsPage({
 
             <main className="custom-scrollbar flex-1 overflow-auto p-4 md:p-6">
                 <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-                    <section className="rounded-lg border border-telegram-border bg-telegram-surface p-4">
-                        <SettingHeader icon={LayoutGrid} title="Grid Size" />
-                        <div className="mt-4 grid grid-cols-5 gap-2">
-                            {GRID_COLUMN_OPTIONS.map((count) => (
-                                <button
-                                    key={count}
-                                    type="button"
-                                    onClick={() => onGridColumnsChange(count)}
-                                    className={`h-11 rounded-md text-sm font-semibold transition ${gridColumns === count
-                                        ? 'bg-telegram-primary text-black'
-                                        : 'border border-telegram-border bg-telegram-hover text-telegram-subtext hover:text-telegram-text'
-                                        }`}
-                                    aria-pressed={gridColumns === count}
-                                >
-                                    {count}
-                                </button>
-                            ))}
-                        </div>
-                    </section>
-
                     <section className="rounded-lg border border-telegram-border bg-telegram-surface p-4">
                         <SettingHeader icon={SlidersHorizontal} title="Drive Tools" />
                         <div className="mt-4 flex flex-wrap gap-2">

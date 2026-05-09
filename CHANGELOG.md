@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.31] - 2026-05-09
+
+### Fixed Grid Defaults
+
+- Removed the custom grid size setting from Settings.
+- Set mobile and touch-device grids to 2 columns.
+- Set desktop grids to 4 columns.
+- Fixed PDF preview loading by using the shared preview source and loading PDF data as bytes across website, desktop, and Android builds.
+- Added a native full-screen preview fallback for formats without a custom renderer.
+- Removed the manual Verify Checksum action, checksum badges, and checksum mismatch widgets from the UI.
+- Bumped app, Tauri, and release versions to 1.1.31.
+
 ## [1.1.30] - 2026-05-09
 
 ### Folder Move, Settings, And Preview Polish

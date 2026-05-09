@@ -28,7 +28,6 @@ export interface TelegramFile {
 }
 
 export type DriveView = 'files' | 'trash';
-export type GridColumnCount = 2 | 3 | 4 | 5 | 6;
 
 export interface TelegramFolder {
     id: number;
@@ -134,13 +133,6 @@ export interface OfflineCacheStats {
     bytes: number;
     maxItems: number;
     maxBytes: number;
-}
-
-export interface IntegrityResult {
-    messageId: number;
-    checksum?: string;
-    expectedChecksum?: string;
-    valid: boolean;
 }
 
 export interface TelegramAccountInfo {

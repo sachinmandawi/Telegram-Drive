@@ -4,7 +4,7 @@ import { X, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
 // which isn't available in Tauri's WebKit WebView
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { TelegramFile } from '../../types';
-import { getBrowserFileObjectUrl, invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime, type StreamInfo } from '../../platform';
+import { invokeCommand, toAssetUrl } from '../../platform';
 import { usePreviewNavigationGestures } from '../../hooks/usePreviewNavigationGestures';
 
 // Use Vite's ?url suffix to get a properly bundled asset URL for the worker
@@ -22,8 +22,7 @@ interface PdfViewerProps {
 }
 
 export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalItems, activeFolderId }: PdfViewerProps) {
-    const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
-    const [browserUrl, setBrowserUrl] = useState<string | null>(null);
+    const [sourceUrl, setSourceUrl] = useState<string | null>(null);
     const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
     const [numPages, setNumPages] = useState<number>(0);
     const [scale, setScale] = useState<number>(1.2);
@@ -31,61 +30,59 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
     const [error, setError] = useState<string | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const pdfRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
-    const isDesktopRuntime = isTauriRuntime();
-    const useDesktopStream = isDesktopRuntime && !isSavedMessagesDefaultStorage();
     const navigationGestures = usePreviewNavigationGestures({ onNext, onPrev });
 
-    // Fetch stream info once
+    // Resolve the same preview source used by every other file preview. This
+    // keeps PDF loading consistent across website, desktop, and Android builds.
     useEffect(() => {
         let cancelled = false;
+        let objectUrl: string | null = null;
 
-        if (useDesktopStream) {
-            setBrowserUrl(null);
-            invokeCommand<StreamInfo>('cmd_get_stream_info')
-                .then((info) => {
-                    if (!cancelled) setStreamInfo(info);
-                })
-                .catch(() => {
-                    if (!cancelled) {
-                        setStreamInfo(null);
-                        setError("Failed to initialize stream");
-                        setLoading(false);
-                    }
+        setSourceUrl(null);
+        setPdf(null);
+        setNumPages(0);
+        setLoading(true);
+        setError(null);
+
+        const loadSource = async () => {
+            try {
+                const path = await invokeCommand<string>('cmd_get_preview', {
+                    messageId: file.id,
+                    folderId: activeFolderId,
                 });
 
-            return () => {
-                cancelled = true;
-            };
-        }
+                if (!path) {
+                    throw new Error('Preview not available');
+                }
 
-        setStreamInfo(null);
-        let objectUrl: string | null = null;
-        getBrowserFileObjectUrl(file.id).then((url) => {
-            if (cancelled) {
-                URL.revokeObjectURL(url);
-                return;
+                const normalized = await toAssetUrl(path);
+
+                if (cancelled) {
+                    if (normalized.startsWith('blob:')) URL.revokeObjectURL(normalized);
+                    return;
+                }
+
+                if (normalized.startsWith('blob:')) objectUrl = normalized;
+                setSourceUrl(normalized);
+            } catch (err) {
+                if (cancelled) return;
+                const message = err instanceof Error ? err.message : 'Failed to load PDF preview.';
+                setError(message);
+                setLoading(false);
             }
-            objectUrl = url;
-            setBrowserUrl(url);
-        }).catch(() => {
-            setError("Failed to load local document");
-            setLoading(false);
-        });
+        };
+
+        loadSource();
 
         return () => {
             cancelled = true;
             if (objectUrl) URL.revokeObjectURL(objectUrl);
         };
-    }, [file.id, useDesktopStream]);
+    }, [activeFolderId, file.id]);
 
-    // Load PDF document when stream URL is ready or file changes
+    // Load PDF document as bytes. Passing data to PDF.js avoids flaky URL/range
+    // loading in WebViews while still working in normal browsers.
     useEffect(() => {
-        const folderIdParam = activeFolderId !== null ? activeFolderId.toString() : 'home';
-        const streamUrl = streamInfo
-            ? `${streamInfo.base_url}/stream/${folderIdParam}/${file.id}?token=${encodeURIComponent(streamInfo.token)}`
-            : null;
-        const sourceUrl = browserUrl || streamUrl;
-
         if (!sourceUrl) return;
 
         let cancelled = false;
@@ -97,17 +94,13 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
 
         const loadPdf = async () => {
             try {
-                if (browserUrl) {
-                    const response = await fetch(browserUrl);
-                    if (!response.ok) {
-                        throw new Error(`Failed to load PDF data (${response.status})`);
-                    }
-                    const data = new Uint8Array(await response.arrayBuffer());
-                    if (cancelled) return;
-                    loadingTask = pdfjsLib.getDocument({ data });
-                } else if (streamUrl) {
-                    loadingTask = pdfjsLib.getDocument(streamUrl);
+                const response = await fetch(sourceUrl);
+                if (!response.ok) {
+                    throw new Error(`Failed to load PDF data (${response.status})`);
                 }
+                const data = new Uint8Array(await response.arrayBuffer());
+                if (cancelled) return;
+                loadingTask = pdfjsLib.getDocument({ data });
 
                 if (!loadingTask) return;
 
@@ -139,7 +132,7 @@ export function PdfViewer({ file, onClose, onNext, onPrev, currentIndex, totalIt
             cancelled = true;
             loadingTask?.destroy();
         };
-    }, [streamInfo, browserUrl, activeFolderId, file.id]);
+    }, [sourceUrl, file.id]);
 
     // Cleanup PDF document on unmount
     useEffect(() => {
