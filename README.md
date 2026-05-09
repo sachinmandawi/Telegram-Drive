@@ -1,142 +1,161 @@
-# Telegram Drive 
+<div align="center">
+  <img src="app/public/logo.svg" width="88" alt="Telegram Drive logo" />
 
-**Telegram Drive** is an open-source, cross-platform desktop application that turns your Telegram account into an unlimited, secure cloud storage drive. Built with **Tauri**, **Rust**, and **React**.
+  <h1>Telegram Drive</h1>
 
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20MacOS%20%7C%20Linux-blue)
+  <img
+    src="https://readme-typing-svg.demolab.com?font=Inter&weight=700&size=28&duration=2600&pause=700&color=2AABEE&center=true&vCenter=true&width=760&lines=Your+Telegram+Saved+Messages+as+a+cloud+drive;Website+%2B+Windows+%2B+Android+APK;Folders%2C+preview%2C+trash%2C+search%2C+and+sync"
+    alt="Animated Telegram Drive feature headline"
+  />
 
+  <p>
+    A fast, privacy-focused cloud drive built on Telegram, React, TypeScript, Rust, and Tauri.
+  </p>
 
-![Auth Screen](screenshots/AuthScreen.png)
+  <p>
+    <a href="https://sachinmandawi.github.io/Telegram-Drive/">
+      <img src="https://img.shields.io/badge/Live_Website-Open_Now-2AABEE?style=for-the-badge&logo=telegram&logoColor=white" alt="Open live website" />
+    </a>
+    <a href="https://github.com/sachinmandawi/Telegram-Drive/releases/latest">
+      <img src="https://img.shields.io/github/v/release/sachinmandawi/Telegram-Drive?style=for-the-badge&label=Latest%20Release" alt="Latest release" />
+    </a>
+    <a href="LICENSE">
+      <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="MIT license" />
+    </a>
+  </p>
 
-##  What is Telegram Drive?
+  <p>
+    <a href="https://github.com/sachinmandawi/Telegram-Drive/actions/workflows/pages.yml">
+      <img src="https://github.com/sachinmandawi/Telegram-Drive/actions/workflows/pages.yml/badge.svg" alt="Website deploy status" />
+    </a>
+    <a href="https://github.com/sachinmandawi/Telegram-Drive/actions/workflows/release.yml">
+      <img src="https://github.com/sachinmandawi/Telegram-Drive/actions/workflows/release.yml/badge.svg" alt="Release build status" />
+    </a>
+  </p>
+</div>
 
-Telegram Drive leverages the Telegram API to allow you to upload, organize, and manage files directly on Telegram's servers. It treats your "Saved Messages" and created Channels as folders, giving you a familiar file explorer interface for your Telegram cloud.
+## Live App
 
-###  Key Features
+Use Telegram Drive directly in your browser:
 
-*   **Unlimited Cloud Storage**: Utilizing Telegram's generous cloud infrastructure.
-*   **Browser-Only Saved Messages Mode**: Run the drive from the local website or desktop app while storing files in Telegram Saved Messages.
-*   **Persistent Cloud Manifest**: Folder structure, starred files, trash state, and metadata are saved back to Telegram so reinstalling the exe does not erase your drive index.
-*   **Repair & Recovery**: Rebuild the local index from Telegram Saved Messages and keep recent manifest snapshots for recovery.
-*   **Drive Tools Dashboard**: View storage analytics, type breakdowns, cache status, backup controls, trash cleanup, account switching, and update checks in one place.
-*   **Smart Search & Tags**: Search names, extensions, MIME types, tags, checksums, and indexed text with richer filters.
-*   **Gallery & Media Views**: Jump straight into image, audio, and video collections without digging through folders.
-*   **Watch Folder Sync**: Select a local folder in supported browsers and queue changed files automatically.
-*   **Offline Cache**: Recently downloaded Telegram files are cached locally for faster repeat opens.
-*   **Integrity Checks**: Upload checksums are stored, downloads can be verified, and mismatches are flagged in the UI.
-*   **OCR & Preview Search**: Images can be OCR indexed, and text-like previews support quick in-file search.
-*   **Sync-Safe Trash & Restore**: Delete files or folders safely with recoverable trash; Sync/Repair keeps trashed items out of active lists until you restore or delete forever.
-*   **Retryable Queues**: Failed or cancelled uploads/downloads can be retried without rebuilding the queue.
-*   **Multi-Account Sessions**: Keep separate Telegram account manifests and switch accounts from Drive Tools.
-*   **High Performance Grid**: Virtual scrolling handles folders with thousands of files instantly.
-*   **Auto-Updates**: Seamless updates for Windows, macOS, and Linux.
-*   **Media Streaming**: Stream video and audio files directly without downloading.
-*   **PDF Viewer:** Built-in PDF support with infinite scrolling for seamless document reading.
-*   **Drag & Drop**: Intuitive drag-and-drop upload and file management.
-*   **Thumbnail Previews**: Inline thumbnails for images and media files.
-*   **Folder Management**: Create "Folders" (private Telegram Channels) to organize content.
-*   **Privacy Focused**: API keys and data stay local. No third-party servers.
-*   **Cross-Platform**: Native apps for macOS (Intel/ARM), Windows, and Linux.
+**https://sachinmandawi.github.io/Telegram-Drive/**
 
-##  Screenshots
+Desktop installers and Android APK builds are published from GitHub Releases:
 
-| Dashboard | File Preview |
-|-----------|--------------|
-| ![Dashboard](screenshots/DashboardWithFiles.png) | ![Preview](screenshots/ImagePreview.png) |
+**https://github.com/sachinmandawi/Telegram-Drive/releases/latest**
 
-| Grid View | Authentication |
-|-----------|----------------|
-| ![Dark Mode](screenshots/DarkModeGrid.png) | ![Login](screenshots/LoginScreen.png) |
+## What It Does
 
-| Audio Playback | Video Playback |
-|----------------|----------------|
-| ![Audio Playback](screenshots/AudioPlayback.png) | ![Video Playback](screenshots/VideoPlayback.png) |
+Telegram Drive turns your Telegram Saved Messages into a familiar drive-style file manager. Upload files, create virtual folders, preview documents/media, move items around, restore from Trash, and keep the drive index synced through a Telegram-backed manifest.
 
-| Auth Code Screen | Upload Example |
-|------------------|-------------|
-| ![Auth Code Screen](screenshots/AuthCodeScreen.png) | ![Upload Example](screenshots/UploadExample.png) |
+## Latest Highlights
 
-| Folder Creation | Folder List View |
-|-----------------|------------------|
-| ![Folder Creation](screenshots/FolderCreation.png) | ![Folder List View](screenshots/FolderListView.png) |
+- Full-screen Google Drive-style previews with keyboard, swipe, and horizontal-scroll navigation.
+- Separate Settings page with grid size options: 2, 3, 4, 5, and 6 columns.
+- Folder moves preserve nested children instead of flattening folder trees.
+- OCR and the heavy Tesseract dependency were removed.
+- Better common Telegram format support for image, audio, video, subtitle, and text previews.
+- Website, desktop, and Android APK release workflows are aligned under `v1.1.30`.
 
-##  Tech Stack
+## Features
 
-*   **Frontend**: React, TypeScript, TailwindCSS, Framer Motion, Tesseract.js
-*   **Backend**: Rust (Tauri), Grammers (Telegram Client)
-*   **Build Tool**: Vite
+| Drive | Preview | Safety |
+| --- | --- | --- |
+| Saved Messages storage | Full-screen image preview | Recoverable Trash |
+| Virtual folder tree | Audio/video streaming | Repair Index |
+| Drag and drop upload | PDF viewer | Manifest backup/import |
+| Folder upload | Text/CSV/TSV/DOCX preview | Integrity checks |
+| Bulk move/download/delete | Preview search | Offline cache |
+| Tags and smart search | Thumbnails | Multi-account sessions |
 
+## Screenshots
 
-##  Getting Started
+| Dashboard | Full Preview |
+| --- | --- |
+| ![Dashboard](screenshots/DashboardWithFiles.png) | ![Image Preview](screenshots/ImagePreview.png) |
+
+| Grid | Upload |
+| --- | --- |
+| ![Dark grid](screenshots/DarkModeGrid.png) | ![Upload example](screenshots/UploadExample.png) |
+
+| Audio | Video |
+| --- | --- |
+| ![Audio playback](screenshots/AudioPlayback.png) | ![Video playback](screenshots/VideoPlayback.png) |
+
+## Download Options
+
+| Platform | How to use |
+| --- | --- |
+| Website | Open the live website link above and sign in with Telegram API credentials. |
+| Windows | Download the `.msi` or `.exe` asset from the latest release. |
+| macOS/Linux | Download the release asset generated for your platform. |
+| Android | Download the debug APK from the latest release for direct testing. |
+
+> Android APKs are debug-signed for testing. Use a release keystore before publishing to an app store.
+
+## Tech Stack
+
+- **Frontend:** React, TypeScript, Tailwind CSS, Framer Motion
+- **Desktop:** Tauri v2, Rust
+- **Telegram:** GramJS in browser/Saved Messages mode, Grammers in desktop legacy mode
+- **Build:** Vite, GitHub Actions, GitHub Pages
+
+## Local Development
 
 ### Prerequisites
 
-*   **Node.js (v18+)**: [Download here](https://nodejs.org/)
-*   **Rust (latest stable)**: Required to compile the Tauri backend. Install via [rustup](https://rustup.rs/):
-    *   **macOS/Linux:** `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-    *   **Windows:** Download and run `rustup-init.exe` from [rustup.rs](https://rustup.rs/)
-    *   *Verify installation:* run `rustc --version` and `cargo --version` in your terminal.
-*   **OS-Specific Build Tools for Tauri**: 
-    *   **macOS:** Xcode Command Line Tools (`xcode-select --install`).
-    *   **Linux (Ubuntu/Debian):** `sudo apt update && sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`
-    *   **Windows (CRITICAL):** You **must** install the [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/). During installation, select the **"Desktop development with C++"** workload. Without this, you will get a `linker 'link.exe' not found` error.
-    *   **Windows (WebView2):** Windows 10/11 users usually have this pre-installed. If not, download the [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section).
-    *   *Reference:* See the official [Tauri v2 Prerequisites Guide](https://v2.tauri.app/start/prerequisites/) for detailed instructions.
-*   **Telegram API Credentials**: You need your own API ID and API Hash to communicate with Telegram's servers.
-    1. Log into [my.telegram.org](https://my.telegram.org).
-    2. Go to "API development tools" and create a new application to get your `api_id` and `api_hash`.
+- Node.js 18+
+- Rust latest stable
+- Tauri v2 system prerequisites
+- Telegram API ID and API Hash from https://my.telegram.org
 
-> [!NOTE]  
-> **First-run Compile Time:** The initial build (`npm run tauri dev` or `npm run tauri build`) will download and compile over 300 Rust crates. This process can take **5 to 15 minutes** depending on your hardware. Subsequent builds will be much faster.
+Windows also needs Visual Studio Build Tools with the **Desktop development with C++** workload. Windows 10/11 normally includes WebView2, but you can install it from Microsoft if Tauri asks for it.
 
-> [!TIP]
-> **NPM Vulnerabilities:** You may see vulnerability warnings during `npm install`. These are usually related to build tools and dev dependencies. You can optionally run `npm audit fix`, but it is not strictly required to run the app.
+### Run Locally
 
-> [!NOTE]
-> **Updater signing:** Tauri in-app update metadata (`latest.json`) requires `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` to be configured in GitHub Secrets. Release installers are published even when updater signing secrets are not available.
+```bash
+git clone https://github.com/sachinmandawi/Telegram-Drive.git
+cd Telegram-Drive/app
+npm install
+npm run dev
+```
 
-### Installation
+### Run Desktop App
 
-1.  **Clone the repository**
-    ```bash
-    git clone https://github.com/sachinmandawi/Telegram-Drive.git
-    cd Telegram-Drive
-    ```
+```bash
+cd app
+npm run tauri dev
+```
 
-2.  **Install Dependencies**
-    ```bash
-    cd app
-    npm install
-    ```
+### Build
 
-3.  **Configure Telegram Credentials**
-    ```bash
-    cp .env.example .env.local
-    ```
-    Add your own `VITE_TELEGRAM_API_ID` and `VITE_TELEGRAM_API_HASH` in `.env.local`.
+```bash
+cd app
+npm run build
+npm run tauri build
+```
 
-4.  **Run in Development Mode**
-    ```bash
-    npm run tauri dev
-    ```
+## Telegram Credentials
 
-5.  **Build/Compile**
-    ```bash
-    npm run tauri build
-    ```
+1. Go to https://my.telegram.org.
+2. Open **API development tools**.
+3. Create an app and copy `api_id` and `api_hash`.
+4. Paste them into Telegram Drive during login.
 
-##  Open Source & License
+For hosted website builds, credentials are entered locally in the browser. They are not committed to this repository.
 
-This repository is owned and maintained by **Sachin Mandavi** ([@sachinmandawi](https://github.com/sachinmandawi)).
+## Notes
+
+- The first desktop build may take 5 to 15 minutes because Rust dependencies compile locally.
+- Release installers are published through GitHub Actions.
+- Tauri updater metadata (`latest.json`) requires `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets.
+
+## License
+
+Owned and maintained by **Sachin Mandavi** ([@sachinmandawi](https://github.com/sachinmandawi)).
 
 Copyright (c) 2026 **Sachin Mandavi**.
 
-Licensed under the **MIT License**. See [`LICENSE`](LICENSE) and [`NOTICE.md`](NOTICE.md).
+Licensed under the **MIT License**. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
 
----
-*Disclaimer: This application is not affiliated with Telegram FZ-LLC. Use responsibly and in accordance with Telegram's Terms of Service.*
-
-<div align="center">
-  <strong>Maintainer:</strong>
-  <a href="https://github.com/sachinmandawi">Sachin Mandavi (@sachinmandawi)</a>
-</div>
+> Telegram Drive is not affiliated with Telegram FZ-LLC. Use it responsibly and follow Telegram's Terms of Service.
