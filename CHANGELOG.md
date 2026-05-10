@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.40] - 2026-05-10
+
+### Release Runner Refresh
+
+- Switched the macOS Intel release job to the current `macos-15-intel` runner label.
+- Bumped app, Tauri, and release versions to 1.1.40.
+
 ## [1.1.39] - 2026-05-10
 
 ### Context Menu Cleanup
