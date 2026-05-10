@@ -55,14 +55,14 @@ Telegram Drive turns your Telegram Saved Messages into a familiar drive-style fi
 - PDF preview includes page thumbnails plus zoom, rotate, and reset controls.
 - Upload queue supports pause/resume and automatic retry scheduling for failed transfers.
 - Duplicate uploads can be saved as versions, kept as renamed copies, replaced, or skipped.
-- MaterialFiles-style cut, copy, paste, rename, delete, and properties actions are available from the item menu and shortcuts.
+- MaterialFiles-style cut, copy, paste, rename, delete, properties, and full-screen preview controls are available from the item menu and viewer.
 - The grid uses a compact file-manager layout with thumbnails and per-item overflow menus.
-- ZIP, XLSX, PPTX, DOCX, CSV/TSV, text, and unsupported files have richer previews or metadata views.
+- ZIP, XLSX, PPTX, DOCX, CSV/TSV, text, images, and unsupported files have richer previews or metadata views.
 - Mobile and compact grids stay usable on touch screens, while desktop grids scale by available width.
 - Folder moves update immediately and preserve nested children instead of flattening folder trees.
 - OCR and the heavy Tesseract dependency were removed.
 - Manual checksum verification was removed from the UI.
-- Website, desktop, and Android APK release workflows are aligned under `v1.1.40`.
+- Website, desktop, and Android APK release workflows are aligned under `v1.1.41`.
 
 ## Features
 

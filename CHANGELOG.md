@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.41] - 2026-05-10
+
+### MaterialFiles-Style Preview
+
+- Restyled the file preview into a MaterialFiles-like full-screen viewer with a top app bar, clean metadata subtitle, and previous/next navigation controls.
+- Added tap-to-hide image preview controls and two-finger pinch in/out zoom support for touch devices.
+- Bumped app, Tauri, and release versions to 1.1.41.
+
 ## [1.1.40] - 2026-05-10
 
 ### Release Runner Refresh

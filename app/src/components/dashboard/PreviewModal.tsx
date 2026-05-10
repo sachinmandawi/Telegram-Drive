@@ -1,5 +1,5 @@
 import { type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent, useEffect, useRef, useState } from 'react';
-import { Archive, Download, File, FileText, Presentation, RotateCcw, RotateCw, Search, Table2, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Archive, ArrowLeft, ChevronLeft, ChevronRight, Download, File, FileText, Presentation, RotateCcw, RotateCw, Search, Table2, ZoomIn, ZoomOut } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import {
     formatBytes,
@@ -86,6 +86,11 @@ type PreviewCacheValue = {
     cachedAt: number;
 };
 
+type PreviewPointer = {
+    x: number;
+    y: number;
+};
+
 const previewCache = new Map<string, PreviewCacheValue>();
 const pendingPrefetch = new Set<string>();
 
@@ -160,6 +165,7 @@ export function PreviewModal({
     const [retryCount, setRetryCount] = useState(0);
     const [isPreviewTruncated, setIsPreviewTruncated] = useState(false);
     const [previewSearchTerm, setPreviewSearchTerm] = useState('');
+    const [chromeVisible, setChromeVisible] = useState(true);
     const latestRequestRef = useRef(0);
 
     const imagePreview = isImageFile(file);
@@ -181,6 +187,7 @@ export function PreviewModal({
         setPresentationPreview(null);
         setIsPreviewTruncated(false);
         setPreviewSearchTerm('');
+        setChromeVisible(true);
     }, [file.id, activeFolderId]);
 
     useEffect(() => {
@@ -361,21 +368,42 @@ export function PreviewModal({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [onClose, onNext, onPrev]);
 
+    const hasMultipleItems = typeof currentIndex === 'number' && typeof totalItems === 'number' && totalItems > 1;
+    const previewChromeVisible = !imagePreview || chromeVisible;
+
     return (
         <div
-            className="fixed inset-0 z-[150] flex items-center justify-center bg-black/95 backdrop-blur-sm"
-            onClick={onClose}
+            className="fixed inset-0 z-[150] bg-[#05070a] text-white"
             {...navigationGestures}
         >
-            <div className="relative flex h-full w-full flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
-                <button
-                    onClick={onClose}
-                    className="absolute right-4 top-4 z-20 rounded-full bg-black/60 p-2 transition-colors hover:bg-black/80"
-                    style={{ color: '#ffffff' }}
-                >
-                    <X className="h-6 w-6" />
-                </button>
+            <div className="relative h-full w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <PreviewAppBar
+                    file={file}
+                    src={src}
+                    visible={previewChromeVisible}
+                    onClose={onClose}
+                    currentIndex={currentIndex}
+                    totalItems={totalItems}
+                />
 
+                {hasMultipleItems && (
+                    <>
+                        <PreviewSideButton
+                            side="left"
+                            label="Previous file"
+                            visible={previewChromeVisible}
+                            onClick={onPrev}
+                        />
+                        <PreviewSideButton
+                            side="right"
+                            label="Next file"
+                            visible={previewChromeVisible}
+                            onClick={onNext}
+                        />
+                    </>
+                )}
+
+                <div className={`flex h-full w-full flex-col items-center justify-center ${imagePreview ? '' : 'pt-14'}`}>
                 {loading && (
                     <div className="flex flex-col items-center gap-4 text-white">
                         <div className="h-10 w-10 animate-spin rounded-full border-4 border-telegram-primary border-t-transparent"></div>
@@ -397,6 +425,8 @@ export function PreviewModal({
                             <ZoomableImagePreview
                                 src={src}
                                 alt={file.name}
+                                controlsVisible={chromeVisible}
+                                onToggleChrome={() => setChromeVisible((visible) => !visible)}
                                 onError={() => {
                                     const key = getPreviewCacheKey(file.id, activeFolderId);
                                     forgetPreview(key);
@@ -418,7 +448,7 @@ export function PreviewModal({
                                     hint={isPreviewTruncated ? 'Preview trimmed for speed' : undefined}
                                     extra={<PreviewSearch value={previewSearchTerm} onChange={setPreviewSearchTerm} matches={searchMatchCount} />}
                                 />
-                                <pre className="custom-scrollbar h-[calc(100dvh-3rem)] overflow-auto whitespace-pre-wrap break-words px-5 py-4 font-mono text-sm leading-6 text-slate-100">
+                                <pre className="custom-scrollbar h-[calc(100%_-_3rem)] overflow-auto whitespace-pre-wrap break-words px-5 py-4 font-mono text-sm leading-6 text-slate-100">
                                     {renderHighlightedText(textContent, previewSearchTerm)}
                                 </pre>
                             </div>
@@ -430,7 +460,7 @@ export function PreviewModal({
                                     hint={isPreviewTruncated ? 'Some large sections may be condensed' : undefined}
                                     extra={<PreviewSearch value={previewSearchTerm} onChange={setPreviewSearchTerm} matches={searchMatchCount} />}
                                 />
-                                <div className="custom-scrollbar h-[calc(100dvh-3rem)] overflow-auto px-6 py-5 text-sm leading-7 text-slate-100">
+                                <div className="custom-scrollbar h-[calc(100%_-_3rem)] overflow-auto px-6 py-5 text-sm leading-7 text-slate-100">
                                     <div
                                         className="prose prose-invert max-w-none prose-headings:text-white prose-p:text-slate-100 prose-li:text-slate-100 prose-strong:text-white prose-a:text-telegram-primary"
                                         dangerouslySetInnerHTML={{ __html: htmlContent }}
@@ -445,7 +475,7 @@ export function PreviewModal({
                                     hint={sheetPreview.truncated ? 'Large sheets were trimmed for fast preview' : undefined}
                                     extra={<PreviewSearch value={previewSearchTerm} onChange={setPreviewSearchTerm} matches={searchMatchCount} />}
                                 />
-                                <div className="custom-scrollbar h-[calc(100dvh-3rem)] overflow-auto px-4 py-4">
+                                <div className="custom-scrollbar h-[calc(100%_-_3rem)] overflow-auto px-4 py-4">
                                     <div className="flex flex-col gap-6">
                                         {sheetPreview.sheets.length === 0 ? (
                                             <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-6 text-sm text-white/70">
@@ -495,7 +525,7 @@ export function PreviewModal({
                                     hint={presentationPreview.truncated ? 'Large decks were trimmed for fast preview' : undefined}
                                     extra={<PreviewSearch value={previewSearchTerm} onChange={setPreviewSearchTerm} matches={searchMatchCount} />}
                                 />
-                                <div className="custom-scrollbar h-[calc(100dvh-3rem)] overflow-auto px-4 py-5">
+                                <div className="custom-scrollbar h-[calc(100%_-_3rem)] overflow-auto px-4 py-5">
                                     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
                                         {presentationPreview.slides.length === 0 ? (
                                             <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-6 text-sm text-white/70">
@@ -533,7 +563,7 @@ export function PreviewModal({
                                     hint={archivePreview.truncated ? 'Large archives were trimmed for fast preview' : undefined}
                                     extra={<PreviewSearch value={previewSearchTerm} onChange={setPreviewSearchTerm} matches={searchMatchCount} />}
                                 />
-                                <div className="custom-scrollbar h-[calc(100dvh-3rem)] overflow-auto px-4 py-4">
+                                <div className="custom-scrollbar h-[calc(100%_-_3rem)] overflow-auto px-4 py-4">
                                     <div className="mb-4 grid gap-3 text-sm text-white/80 sm:grid-cols-3">
                                         <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3">
                                             <p className="text-xs uppercase tracking-[0.16em] text-white/40">Files</p>
@@ -583,28 +613,142 @@ export function PreviewModal({
                     </div>
                 )}
 
-                <div className="absolute bottom-4 left-1/2 max-w-[calc(100vw-2rem)] -translate-x-1/2 truncate rounded-full bg-black/45 px-3 py-1.5 text-sm text-white/70 backdrop-blur">
-                    {file.name}
-                    {typeof currentIndex === 'number' && typeof totalItems === 'number' && totalItems > 0 && (
-                        <span className="ml-3">{currentIndex + 1}/{totalItems}</span>
-                    )}
                 </div>
             </div>
         </div>
     );
 }
 
-function ZoomableImagePreview({ src, alt, onError }: { src: string; alt: string; onError: () => void }) {
+function PreviewAppBar({
+    file,
+    src,
+    visible,
+    onClose,
+    currentIndex,
+    totalItems,
+}: {
+    file: TelegramFile;
+    src: string | null;
+    visible: boolean;
+    onClose: () => void;
+    currentIndex?: number;
+    totalItems?: number;
+}) {
+    const subtitle = getPreviewSubtitle(file, currentIndex, totalItems);
+
+    return (
+        <div
+            className={`absolute inset-x-0 top-0 z-30 flex h-14 items-center gap-3 border-b border-white/10 bg-[#17212b]/95 px-2 text-white shadow-lg backdrop-blur transition-all duration-200 sm:px-3 ${visible ? 'translate-y-0 opacity-100' : 'pointer-events-none -translate-y-full opacity-0'}`}
+        >
+            <button
+                type="button"
+                onClick={onClose}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/80 transition hover:bg-white/10 hover:text-white"
+                aria-label="Close preview"
+                title="Back"
+            >
+                <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div className="min-w-0 flex-1">
+                <h2 className="truncate text-sm font-medium leading-5 text-white" title={file.name}>
+                    {file.name}
+                </h2>
+                <p className="truncate text-xs leading-4 text-white/55">{subtitle}</p>
+            </div>
+            {src && (
+                <a
+                    href={src}
+                    download={file.name}
+                    onClick={(event) => event.stopPropagation()}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/75 transition hover:bg-white/10 hover:text-white"
+                    aria-label="Download file"
+                    title="Download"
+                >
+                    <Download className="h-5 w-5" />
+                </a>
+            )}
+        </div>
+    );
+}
+
+function PreviewSideButton({
+    side,
+    label,
+    visible,
+    onClick,
+}: {
+    side: 'left' | 'right';
+    label: string;
+    visible: boolean;
+    onClick?: () => void;
+}) {
+    if (!onClick) return null;
+
+    const Icon = side === 'left' ? ChevronLeft : ChevronRight;
+    const positionClass = side === 'left' ? 'left-3' : 'right-3';
+
+    return (
+        <button
+            type="button"
+            onClick={(event) => {
+                event.stopPropagation();
+                onClick();
+            }}
+            className={`absolute ${positionClass} top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/45 text-white/80 shadow-xl backdrop-blur transition-all duration-200 hover:bg-black/65 hover:text-white sm:flex ${visible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+            aria-label={label}
+            title={label}
+        >
+            <Icon className="h-6 w-6" />
+        </button>
+    );
+}
+
+function getPreviewSubtitle(file: TelegramFile, currentIndex?: number, totalItems?: number) {
+    const parts: string[] = [];
+    if (typeof currentIndex === 'number' && typeof totalItems === 'number' && totalItems > 1) {
+        parts.push(`${currentIndex + 1}/${totalItems}`);
+    }
+    if (file.size) parts.push(formatBytes(file.size));
+    const extension = getFileExtension(file);
+    if (extension) {
+        parts.push(`${extension.toUpperCase()} preview`);
+    } else if (file.mime_type) {
+        parts.push(file.mime_type);
+    } else {
+        parts.push('Preview');
+    }
+    return parts.join(' - ');
+}
+
+function ZoomableImagePreview({
+    src,
+    alt,
+    controlsVisible,
+    onToggleChrome,
+    onError,
+}: {
+    src: string;
+    alt: string;
+    controlsVisible: boolean;
+    onToggleChrome: () => void;
+    onError: () => void;
+}) {
     const [scale, setScale] = useState(1);
     const [rotation, setRotation] = useState(0);
     const [offset, setOffset] = useState({ x: 0, y: 0 });
     const dragRef = useRef<{ pointerId: number; x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+    const activePointersRef = useRef(new Map<number, PreviewPointer>());
+    const pinchRef = useRef<{ distance: number; scale: number } | null>(null);
+    const gestureMovedRef = useRef(false);
+    const lastPinchAtRef = useRef(0);
 
     useEffect(() => {
         setScale(1);
         setRotation(0);
         setOffset({ x: 0, y: 0 });
         dragRef.current = null;
+        pinchRef.current = null;
+        activePointersRef.current.clear();
     }, [src]);
 
     const clampScale = (value: number) => Math.min(5, Math.max(0.5, value));
@@ -631,25 +775,76 @@ function ZoomableImagePreview({ src, alt, onError }: { src: string; alt: string;
         zoomBy(event.deltaY < 0 ? 0.25 : -0.25);
     };
 
+    const getPointerPair = () => Array.from(activePointersRef.current.values()).slice(0, 2);
+    const getPointerDistance = (first: PreviewPointer, second: PreviewPointer) => Math.hypot(first.x - second.x, first.y - second.y);
+
     const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-        if (scale <= 1) return;
-        event.preventDefault();
-        event.stopPropagation();
         event.currentTarget.setPointerCapture(event.pointerId);
-        dragRef.current = {
-            pointerId: event.pointerId,
-            x: event.clientX,
-            y: event.clientY,
-            offsetX: offset.x,
-            offsetY: offset.y,
-        };
+        activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+        if (activePointersRef.current.size >= 2) {
+            const [first, second] = getPointerPair();
+            if (first && second) {
+                event.preventDefault();
+                event.stopPropagation();
+                dragRef.current = null;
+                pinchRef.current = {
+                    distance: getPointerDistance(first, second),
+                    scale,
+                };
+                gestureMovedRef.current = true;
+                lastPinchAtRef.current = Date.now();
+            }
+            return;
+        }
+
+        pinchRef.current = null;
+        gestureMovedRef.current = false;
+
+        if (scale > 1) {
+            event.preventDefault();
+            event.stopPropagation();
+            dragRef.current = {
+                pointerId: event.pointerId,
+                x: event.clientX,
+                y: event.clientY,
+                offsetX: offset.x,
+                offsetY: offset.y,
+            };
+        }
     };
 
     const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+        if (activePointersRef.current.has(event.pointerId)) {
+            activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        }
+
+        if (activePointersRef.current.size >= 2) {
+            const [first, second] = getPointerPair();
+            if (!first || !second) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            gestureMovedRef.current = true;
+            lastPinchAtRef.current = Date.now();
+
+            const distance = getPointerDistance(first, second);
+            if (!pinchRef.current || pinchRef.current.distance <= 0) {
+                pinchRef.current = { distance, scale };
+                return;
+            }
+
+            const nextScale = clampScale(pinchRef.current.scale * (distance / pinchRef.current.distance));
+            setScale(nextScale);
+            if (nextScale <= 1) setOffset({ x: 0, y: 0 });
+            return;
+        }
+
         const drag = dragRef.current;
         if (!drag || drag.pointerId !== event.pointerId) return;
         event.preventDefault();
         event.stopPropagation();
+        gestureMovedRef.current = true;
         setOffset({
             x: drag.offsetX + event.clientX - drag.x,
             y: drag.offsetY + event.clientY - drag.y,
@@ -657,11 +852,28 @@ function ZoomableImagePreview({ src, alt, onError }: { src: string; alt: string;
     };
 
     const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+        const wasPinching = Boolean(pinchRef.current) || activePointersRef.current.size > 1;
+        activePointersRef.current.delete(event.pointerId);
+        try {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        } catch {
+            // The pointer may already be released by the browser.
+        }
+
         const drag = dragRef.current;
-        if (!drag || drag.pointerId !== event.pointerId) return;
-        event.preventDefault();
-        event.stopPropagation();
-        dragRef.current = null;
+        if (drag?.pointerId === event.pointerId) {
+            event.preventDefault();
+            event.stopPropagation();
+            dragRef.current = null;
+        }
+
+        if (wasPinching) {
+            event.preventDefault();
+            event.stopPropagation();
+            pinchRef.current = null;
+            gestureMovedRef.current = true;
+            lastPinchAtRef.current = Date.now();
+        }
     };
 
     return (
@@ -672,11 +884,30 @@ function ZoomableImagePreview({ src, alt, onError }: { src: string; alt: string;
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
+            onTouchEnd={(event) => {
+                if (Date.now() - lastPinchAtRef.current < 450) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+            }}
+            onTouchCancel={(event) => {
+                if (Date.now() - lastPinchAtRef.current < 450) {
+                    event.stopPropagation();
+                }
+            }}
+            onClick={(event) => {
+                event.stopPropagation();
+                if (gestureMovedRef.current || Date.now() - lastPinchAtRef.current < 450) {
+                    gestureMovedRef.current = false;
+                    return;
+                }
+                onToggleChrome();
+            }}
             onDoubleClick={(event) => {
                 event.stopPropagation();
                 scale === 1 ? setScale(2.5) : reset();
             }}
-            style={{ touchAction: scale > 1 ? 'none' : 'pan-y' }}
+            style={{ touchAction: 'none' }}
         >
             <img
                 src={src}
@@ -689,7 +920,7 @@ function ZoomableImagePreview({ src, alt, onError }: { src: string; alt: string;
                     transition: dragRef.current ? 'none' : 'transform 120ms ease-out',
                 }}
             />
-            <div className="absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/45 p-1.5 text-white backdrop-blur">
+            <div className={`absolute bottom-5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/55 p-1.5 text-white shadow-2xl backdrop-blur transition-all duration-200 ${controlsVisible ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'}`}>
                 <button type="button" className="rounded-full p-2 text-white/70 hover:bg-white/10 hover:text-white" onClick={(event) => { event.stopPropagation(); zoomBy(-0.25); }} title="Zoom out">
                     <ZoomOut className="h-4 w-4" />
                 </button>
@@ -719,7 +950,7 @@ function UnsupportedFilePreview({ file, src }: { file: TelegramFile; src: string
     ];
 
     return (
-        <div className="grid h-[calc(100dvh-3rem)] min-h-0 w-full grid-cols-1 bg-[#111827] lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="grid h-[calc(100%_-_3rem)] min-h-0 w-full grid-cols-1 bg-[#111827] lg:grid-cols-[minmax(0,1fr)_22rem]">
             <div className="min-h-0 overflow-hidden border-b border-white/10 bg-black/25 lg:border-b-0 lg:border-r">
                 <object
                     data={src}
@@ -768,8 +999,8 @@ function UnsupportedFilePreview({ file, src }: { file: TelegramFile; src: string
 
 function PreviewHeader({ icon, label, hint, extra }: { icon: ReactNode; label: string; hint?: string; extra?: ReactNode }) {
     return (
-        <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3 pr-16 text-xs text-white/60">
-            <span className="flex items-center gap-2 uppercase tracking-[0.18em]">
+        <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-[#17212b] px-4 py-2 text-xs text-white/65">
+            <span className="flex min-w-0 items-center gap-2 font-medium uppercase">
                 {icon}
                 {label}
             </span>
