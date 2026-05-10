@@ -37,9 +37,7 @@ interface FileExplorerProps {
     onShowVersions?: (file: TelegramFile) => void;
     onCut?: (file: TelegramFile) => void;
     onCopy?: (file: TelegramFile) => void;
-    onMove?: (file: TelegramFile) => void;
     onProperties?: (file: TelegramFile) => void;
-    onMergeFolder?: (file: TelegramFile) => void;
     onToggleLock?: (file: TelegramFile) => void;
     onToggleProtection?: (file: TelegramFile) => void;
     getItemPath?: (file: TelegramFile) => string | undefined;
@@ -125,7 +123,7 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>, en
 
 export function FileExplorer({
     files, loading, error, viewMode, selectedIds, activeFolderId,
-    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onRename, onSetFolderColor, onShowVersions, onCut, onCopy, onMove, onProperties, onMergeFolder, onToggleLock, onToggleProtection, getItemPath, highlightedId
+    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onRename, onSetFolderColor, onShowVersions, onCut, onCopy, onProperties, onToggleLock, onToggleProtection, getItemPath, highlightedId
 }: FileExplorerProps) {
     const [sortField, setSortField] = useState<SortField>('name');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -499,16 +497,8 @@ export function FileExplorer({
                         onCopy(contextMenu.file);
                         setContextMenu(null);
                     } : undefined}
-                    onMove={onMove && !contextMenu.file.trashed ? () => {
-                        onMove(contextMenu.file);
-                        setContextMenu(null);
-                    } : undefined}
                     onProperties={onProperties ? () => {
                         onProperties(contextMenu.file);
-                        setContextMenu(null);
-                    } : undefined}
-                    onMergeFolder={onMergeFolder ? () => {
-                        onMergeFolder(contextMenu.file);
                         setContextMenu(null);
                     } : undefined}
                     onToggleLock={onToggleLock ? () => {

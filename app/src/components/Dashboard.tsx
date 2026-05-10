@@ -1078,15 +1078,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         await startClipboardAction('cut', getActionItems(file));
     }, [getActionItems, startClipboardAction]);
 
-    const handleMergeFolder = useCallback(async (file: TelegramFile) => {
-        if (file.type !== 'folder') return;
-        if (!await ensureProtectedAccess(file, 'merge')) return;
-        setSelectedIds([file.id]);
-        setMoveConflictStrategy('merge');
-        setShowMoveModal(true);
-        toast.info('Choose a destination. Same-name folders will be merged.');
-    }, [ensureProtectedAccess]);
-
     const handleToggleLock = useCallback(async (file: TelegramFile) => {
         if (!await ensureProtectedAccess(file, file.locked ? 'unlock' : 'lock')) return;
         try {
@@ -1203,13 +1194,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         await restoreItems(selectedItems);
         setSelectedIds([]);
     }, [displayedFiles, restoreItems, selectedIds]);
-
-    const handleStartMoveItem = useCallback((file: TelegramFile) => {
-        if (driveView !== 'files' || file.trashed) return;
-        setSelectedIds([file.id]);
-        setMoveConflictStrategy('keep_both');
-        setShowMoveModal(true);
-    }, [driveView]);
 
     const showSearchPaths = searchTerm.length > 2 && driveView === 'files';
     const getDisplayedItemPath = useCallback((file: TelegramFile) => {
@@ -1522,9 +1506,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onShowVersions={handleShowVersions}
                     onCut={handleCutItem}
                     onCopy={handleCopyItem}
-                    onMove={handleStartMoveItem}
                     onProperties={handlePropertiesItem}
-                    onMergeFolder={handleMergeFolder}
                     onToggleLock={handleToggleLock}
                     onToggleProtection={handleToggleProtection}
                     getItemPath={getDisplayedItemPath}

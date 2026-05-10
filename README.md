@@ -62,7 +62,7 @@ Telegram Drive turns your Telegram Saved Messages into a familiar drive-style fi
 - Folder moves update immediately and preserve nested children instead of flattening folder trees.
 - OCR and the heavy Tesseract dependency were removed.
 - Manual checksum verification was removed from the UI.
-- Website, desktop, and Android APK release workflows are aligned under `v1.1.38`.
+- Website, desktop, and Android APK release workflows are aligned under `v1.1.39`.
 
 ## Features
 

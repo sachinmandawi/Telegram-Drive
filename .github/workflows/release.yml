@@ -326,7 +326,7 @@ jobs:
           while IFS= read -r -d '' APK_PATH; do
             APK_INDEX=$((APK_INDEX + 1))
             APK_BASENAME="$(basename "$APK_PATH")"
-            SAFE_APK_BASENAME="$(echo "$APK_BASENAME" | tr -c 'A-Za-z0-9._-' '_')"
+            SAFE_APK_BASENAME="$(printf '%s' "$APK_BASENAME" | tr -c 'A-Za-z0-9._-' '_')"
             cp "$APK_PATH" "${ARTIFACT_DIR}/Telegram_Drive_${VERSION}_android_debug_${SAFE_APK_BASENAME}"
           done < <(find app/src-tauri/gen/android/app/build/outputs/apk -name "*.apk" -type f -print0)
 

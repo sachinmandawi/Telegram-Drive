@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.39] - 2026-05-10
+
+### Context Menu Cleanup
+
+- Removed the old Move to and Merge into context-menu actions now that Cut and Paste cover the same workflow.
+- Fixed Android split APK release asset names so generated `.apk` files upload correctly.
+- Bumped app, Tauri, and release versions to 1.1.39.
+
 ## [1.1.38] - 2026-05-10
 
 ### MaterialFiles-Style File Actions

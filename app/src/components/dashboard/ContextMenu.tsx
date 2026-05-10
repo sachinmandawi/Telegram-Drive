@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CheckCircle2, Copy, Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, RotateCcw, Tag, Shield, ShieldOff, History, Lock, UnlockKeyhole, Combine, FolderInput, Info, Scissors } from 'lucide-react';
+import { CheckCircle2, Copy, Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, RotateCcw, Tag, Shield, ShieldOff, History, Lock, UnlockKeyhole, Info, Scissors } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { isMediaFile, isPdfFile } from '../../utils';
 
@@ -19,14 +19,12 @@ interface ContextMenuProps {
     onShowVersions?: () => void;
     onCut?: () => void;
     onCopy?: () => void;
-    onMove?: () => void;
     onProperties?: () => void;
-    onMergeFolder?: () => void;
     onToggleLock?: () => void;
     onToggleProtection?: () => void;
 }
 
-export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onRestore, onSelect, onEditTags, onRename, onSetFolderColor, onShowVersions, onCut, onCopy, onMove, onProperties, onMergeFolder, onToggleLock, onToggleProtection }: ContextMenuProps) {
+export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onRestore, onSelect, onEditTags, onRename, onSetFolderColor, onShowVersions, onCut, onCopy, onProperties, onToggleLock, onToggleProtection }: ContextMenuProps) {
     const [adjustedPos, setAdjustedPos] = useState({ x, y });
     const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -170,20 +168,6 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
                 <Pencil className="w-4 h-4" />
                 Rename
             </button>
-
-            {onMove && !file.trashed && (
-                <button onClick={onMove} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
-                    <FolderInput className="w-4 h-4 text-telegram-primary" />
-                    Move to...
-                </button>
-            )}
-
-            {file.type === 'folder' && onMergeFolder && !file.trashed && (
-                <button onClick={onMergeFolder} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
-                    <Combine className="w-4 h-4 text-telegram-primary" />
-                    Merge into...
-                </button>
-            )}
 
             {onToggleLock && !file.trashed && (
                 <button onClick={onToggleLock} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
