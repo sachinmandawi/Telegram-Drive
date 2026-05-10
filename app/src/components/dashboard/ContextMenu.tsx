@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, Copy, Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, RotateCcw, Tag, Shield, ShieldOff, History, Lock, UnlockKeyhole, Combine, FolderInput } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { CheckCircle2, Copy, Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, RotateCcw, Tag, Shield, ShieldOff, History, Lock, UnlockKeyhole, Combine, FolderInput, Info, Scissors } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { isMediaFile, isPdfFile } from '../../utils';
 
@@ -17,14 +17,16 @@ interface ContextMenuProps {
     onRename?: () => void;
     onSetFolderColor?: (color: string) => void;
     onShowVersions?: () => void;
+    onCut?: () => void;
     onCopy?: () => void;
     onMove?: () => void;
+    onProperties?: () => void;
     onMergeFolder?: () => void;
     onToggleLock?: () => void;
     onToggleProtection?: () => void;
 }
 
-export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onRestore, onSelect, onEditTags, onRename, onSetFolderColor, onShowVersions, onCopy, onMove, onMergeFolder, onToggleLock, onToggleProtection }: ContextMenuProps) {
+export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onRestore, onSelect, onEditTags, onRename, onSetFolderColor, onShowVersions, onCut, onCopy, onMove, onProperties, onMergeFolder, onToggleLock, onToggleProtection }: ContextMenuProps) {
     const [adjustedPos, setAdjustedPos] = useState({ x, y });
     const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -35,20 +37,16 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
         return () => window.removeEventListener('resize', update);
     }, []);
 
-    // Adjust position to stay in bounds
-    useEffect(() => {
+    // Clamp the menu inside the viewport without flipping it far away from the pointer.
+    useLayoutEffect(() => {
         if (isMobile) return;
         if (menuRef.current) {
             const rect = menuRef.current.getBoundingClientRect();
-            let newX = x;
-            let newY = y;
-
-            if (x + rect.width > window.innerWidth) {
-                newX = x - rect.width;
-            }
-            if (y + rect.height > window.innerHeight) {
-                newY = y - rect.height;
-            }
+            const padding = 8;
+            const maxX = Math.max(padding, window.innerWidth - rect.width - padding);
+            const maxY = Math.max(padding, window.innerHeight - rect.height - padding);
+            const newX = Math.min(Math.max(padding, x), maxX);
+            const newY = Math.min(Math.max(padding, y), maxY);
             setAdjustedPos({ x: newX, y: newY });
         }
     }, [isMobile, x, y]);
@@ -154,6 +152,20 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
                 </button>
             )}
 
+            {onCut && !file.trashed && (
+                <button onClick={onCut} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
+                    <Scissors className="w-4 h-4 text-telegram-primary" />
+                    Cut
+                </button>
+            )}
+
+            {onCopy && !file.trashed && (
+                <button onClick={onCopy} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
+                    <Copy className="w-4 h-4 text-telegram-primary" />
+                    Copy
+                </button>
+            )}
+
             <button onClick={onRename} disabled={!onRename || file.trashed} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full disabled:cursor-not-allowed disabled:opacity-50">
                 <Pencil className="w-4 h-4" />
                 Rename
@@ -163,13 +175,6 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
                 <button onClick={onMove} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
                     <FolderInput className="w-4 h-4 text-telegram-primary" />
                     Move to...
-                </button>
-            )}
-
-            {onCopy && !file.trashed && (
-                <button onClick={onCopy} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
-                    <Copy className="w-4 h-4 text-telegram-primary" />
-                    Make a Copy
                 </button>
             )}
 
@@ -205,6 +210,13 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
                 <button onClick={onShowVersions} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
                     <History className="w-4 h-4 text-telegram-primary" />
                     Versions
+                </button>
+            )}
+
+            {onProperties && (
+                <button onClick={onProperties} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
+                    <Info className="w-4 h-4 text-telegram-primary" />
+                    Properties
                 </button>
             )}
 

@@ -6,6 +6,11 @@ interface UseKeyboardShortcutsProps {
     onEscape: () => void;
     onSearch: () => void;
     onEnter?: () => void;
+    onCut?: () => void;
+    onCopy?: () => void;
+    onPaste?: () => void;
+    onRename?: () => void;
+    onProperties?: () => void;
     enabled?: boolean;
 }
 
@@ -15,6 +20,11 @@ export function useKeyboardShortcuts({
     onEscape,
     onSearch,
     onEnter,
+    onCut,
+    onCopy,
+    onPaste,
+    onRename,
+    onProperties,
     enabled = true
 }: UseKeyboardShortcutsProps) {
 
@@ -34,17 +44,37 @@ export function useKeyboardShortcuts({
 
         const isMod = e.metaKey || e.ctrlKey;
 
+        const key = e.key.toLowerCase();
+
         // Cmd/Ctrl + A - Select All
-        if (isMod && e.key === 'a') {
+        if (isMod && key === 'a') {
             e.preventDefault();
             onSelectAll();
             return;
         }
 
         // Cmd/Ctrl + F - Focus Search
-        if (isMod && e.key === 'f') {
+        if (isMod && key === 'f') {
             e.preventDefault();
             onSearch();
+            return;
+        }
+
+        if (isMod && key === 'x' && onCut) {
+            e.preventDefault();
+            onCut();
+            return;
+        }
+
+        if (isMod && key === 'c' && onCopy) {
+            e.preventDefault();
+            onCopy();
+            return;
+        }
+
+        if (isMod && key === 'v' && onPaste) {
+            e.preventDefault();
+            onPaste();
             return;
         }
 
@@ -61,13 +91,23 @@ export function useKeyboardShortcuts({
             onEscape();
             return;
         }
+        if (e.key === 'F2' && onRename) {
+            e.preventDefault();
+            onRename();
+            return;
+        }
+        if (e.altKey && e.key === 'Enter' && onProperties) {
+            e.preventDefault();
+            onProperties();
+            return;
+        }
         // Enter - Open / Preview
         if (e.key === 'Enter') {
             e.preventDefault();
             onEnter?.();
             return;
         }
-    }, [enabled, onSelectAll, onDelete, onEscape, onSearch, onEnter]);
+    }, [enabled, onSelectAll, onDelete, onEscape, onSearch, onEnter, onCut, onCopy, onPaste, onRename, onProperties]);
 
     useEffect(() => {
         window.addEventListener('keydown', handleKeyDown);

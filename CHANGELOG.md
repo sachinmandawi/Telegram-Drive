@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.38] - 2026-05-10
+
+### MaterialFiles-Style File Actions
+
+- Added MaterialFiles-style Cut, Copy, and Paste workflow with a bottom paste bar for the current folder.
+- Added proper Rename and Properties modals for file and folder metadata.
+- Updated the grid to a compact file-manager layout with 16:9 thumbnails and a per-item overflow menu.
+- Added keyboard shortcuts for cut, copy, paste, rename, and properties.
+- Expanded release workflow coverage for macOS Intel and split Android APKs across arm64, armv7, x86, and x86_64 devices.
+- Bumped app, Tauri, and release versions to 1.1.38.
+
 ## [1.1.37] - 2026-05-09
 
 ### Upload Resume And Duplicate Handling

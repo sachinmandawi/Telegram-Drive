@@ -55,12 +55,14 @@ Telegram Drive turns your Telegram Saved Messages into a familiar drive-style fi
 - PDF preview includes page thumbnails plus zoom, rotate, and reset controls.
 - Upload queue supports pause/resume and automatic retry scheduling for failed transfers.
 - Duplicate uploads can be saved as versions, kept as renamed copies, replaced, or skipped.
+- MaterialFiles-style cut, copy, paste, rename, delete, and properties actions are available from the item menu and shortcuts.
+- The grid uses a compact file-manager layout with thumbnails and per-item overflow menus.
 - ZIP, XLSX, PPTX, DOCX, CSV/TSV, text, and unsupported files have richer previews or metadata views.
-- Mobile and compact grids are forced to 2 columns after loading, while desktop grids default to 4 columns.
+- Mobile and compact grids stay usable on touch screens, while desktop grids scale by available width.
 - Folder moves update immediately and preserve nested children instead of flattening folder trees.
 - OCR and the heavy Tesseract dependency were removed.
 - Manual checksum verification was removed from the UI.
-- Website, desktop, and Android APK release workflows are aligned under `v1.1.37`.
+- Website, desktop, and Android APK release workflows are aligned under `v1.1.38`.
 
 ## Features
 
@@ -93,8 +95,8 @@ Telegram Drive turns your Telegram Saved Messages into a familiar drive-style fi
 | --- | --- |
 | Website | Open the live website link above and sign in with Telegram API credentials. |
 | Windows | Download the `.msi` or `.exe` asset from the latest release. |
-| macOS/Linux | Download the release asset generated for your platform. |
-| Android | Download the debug APK from the latest release for direct testing. |
+| macOS/Linux | Download the Intel, Apple Silicon, AppImage, or package asset generated for your platform. |
+| Android | Download the debug APK that matches your device ABI, or use the universal/debug asset if present. |
 
 > Android APKs are debug-signed for testing. Use a release keystore before publishing to an app store.
 

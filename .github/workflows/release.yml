@@ -32,7 +32,7 @@ jobs:
               repo: context.repo.repo,
               tag_name: `v${{ steps.get_version.outputs.VERSION }}`,
               name: `Telegram Drive v${{ steps.get_version.outputs.VERSION }}`,
-              body: `Telegram Drive v${{ steps.get_version.outputs.VERSION }} includes desktop builds for Windows, Linux, and macOS, plus an Android debug APK for phone testing.\n\nThe Android APK is debug-signed for direct testing. Use a release keystore before publishing to Google Play.\n\nSee the assets below to download and install.`,
+              body: `Telegram Drive v${{ steps.get_version.outputs.VERSION }} includes desktop builds for Windows, Linux, macOS Intel, and macOS Apple Silicon, plus split Android debug APKs for arm64, armv7, x86, and x86_64 device testing.\n\nThe Android APKs are debug-signed for direct testing. Use a release keystore before publishing to Google Play.\n\nSee the assets below to download and install.`,
               draft: true,
               prerelease: false
             });
@@ -60,6 +60,11 @@ jobs:
           - platform: macos-latest
             args: '--target aarch64-apple-darwin'
             target: 'aarch64-apple-darwin'
+
+          # macOS Intel
+          - platform: macos-13
+            args: ''
+            target: ''
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -245,10 +250,14 @@ jobs:
           APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 \
             ./appimagetool-x86_64.AppImage --comp gzip squashfs-root "$APPIMAGE"
 
+          gh release upload "$GITHUB_REF_NAME" "$APPIMAGE" --clobber
+
           # Cleanup
           rm -rf squashfs-root appimagetool-x86_64.AppImage
 
           echo "::notice::AppImage patched successfully for cross-distro EGL compatibility"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-android:
     needs: create-release
@@ -288,7 +297,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
       - name: Install frontend dependencies
         working-directory: app
@@ -302,7 +311,7 @@ jobs:
         working-directory: app
         env:
           VITE_DEFAULT_STORAGE: saved_messages
-        run: npm run tauri -- android build --debug --apk --target aarch64
+        run: npm run tauri -- android build --debug --apk --split-per-abi --target aarch64 armv7 i686 x86_64
 
       - name: Upload Android APK to release
         env:
@@ -316,7 +325,9 @@ jobs:
           APK_INDEX=0
           while IFS= read -r -d '' APK_PATH; do
             APK_INDEX=$((APK_INDEX + 1))
-            cp "$APK_PATH" "${ARTIFACT_DIR}/Telegram_Drive_${VERSION}_android_aarch64_debug_${APK_INDEX}.apk"
+            APK_BASENAME="$(basename "$APK_PATH")"
+            SAFE_APK_BASENAME="$(echo "$APK_BASENAME" | tr -c 'A-Za-z0-9._-' '_')"
+            cp "$APK_PATH" "${ARTIFACT_DIR}/Telegram_Drive_${VERSION}_android_debug_${SAFE_APK_BASENAME}"
           done < <(find app/src-tauri/gen/android/app/build/outputs/apk -name "*.apk" -type f -print0)
 
           if [ "$APK_INDEX" -eq 0 ]; then

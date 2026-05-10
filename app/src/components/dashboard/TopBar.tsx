@@ -1,4 +1,4 @@
-import { CheckSquare, Menu, Tag, X } from 'lucide-react';
+import { CheckSquare, Copy, Menu, Scissors, Tag, X } from 'lucide-react';
 
 interface TopBarProps {
     currentFolderName: string;
@@ -9,6 +9,8 @@ interface TopBarProps {
     allSelected: boolean;
     selectableCount: number;
     onShowMoveModal: () => void;
+    onBulkCut?: () => void;
+    onBulkCopy?: () => void;
     onBulkDownload: () => void;
     onBulkDelete: () => void;
     onBulkRestore?: () => void;
@@ -21,7 +23,7 @@ interface TopBarProps {
 }
 
 export function TopBar({
-    currentFolderName, selectedIds, onShowMoveModal, onBulkDownload, onBulkDelete,
+    currentFolderName, selectedIds, onShowMoveModal, onBulkCut, onBulkCopy, onBulkDownload, onBulkDelete,
     onBulkTag, searchTerm, onSearchChange, savedMessagesOnly = false,
     onSelectAll, onClearSelection, allSelected, selectableCount, breadcrumbs, onBulkRestore,
     syncStatusText, onOpenSidebar
@@ -98,6 +100,8 @@ export function TopBar({
                             <button onClick={onSelectAll} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-telegram-hover px-2 py-1.5 text-xs text-telegram-text transition hover:bg-telegram-border md:px-3"><CheckSquare className="h-3 w-3" /> Select All</button>
                         )}
                         {!savedMessagesOnly && <button onClick={onShowMoveModal} className="whitespace-nowrap rounded-md bg-telegram-primary/20 px-2 py-1.5 text-xs font-medium text-telegram-primary transition hover:bg-telegram-primary/30 md:px-3">Move</button>}
+                        {!savedMessagesOnly && onBulkCut && <button onClick={onBulkCut} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-telegram-hover px-2 py-1.5 text-xs text-telegram-text transition hover:bg-telegram-border md:px-3"><Scissors className="h-3 w-3" /><span className="hidden sm:inline">Cut</span></button>}
+                        {!savedMessagesOnly && onBulkCopy && <button onClick={onBulkCopy} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-telegram-hover px-2 py-1.5 text-xs text-telegram-text transition hover:bg-telegram-border md:px-3"><Copy className="h-3 w-3" /><span className="hidden sm:inline">Copy</span></button>}
                         {onBulkRestore && <button onClick={onBulkRestore} className="whitespace-nowrap rounded-md bg-green-500/10 px-2 py-1.5 text-xs text-green-400 transition hover:bg-green-500/20 md:px-3">Restore</button>}
                         <button onClick={onBulkTag} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-telegram-hover px-2 py-1.5 text-xs text-telegram-text transition hover:bg-telegram-border md:px-3"><Tag className="h-3 w-3" /><span className="hidden sm:inline">Tags</span></button>
                         <button onClick={onBulkDownload} className="whitespace-nowrap rounded-md bg-telegram-hover px-2 py-1.5 text-xs text-telegram-text transition hover:bg-telegram-border md:px-3">Download</button>

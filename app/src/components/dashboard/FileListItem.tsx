@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Folder, Eye, HardDrive, Lock, Plus, Shield } from 'lucide-react';
+import { Folder, Eye, HardDrive, Lock, MoreVertical, Plus, Shield } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { FileTypeIcon } from '../FileTypeIcon';
 
@@ -94,6 +94,7 @@ export function FileListItem({
                         <button onClick={(e) => { e.stopPropagation(); onDownload(file.id, file.name) }} className="p-1 hover:text-telegram-text text-telegram-subtext" title="Download"><HardDrive className="w-4 h-4" /></button>
                     )}
                     <button onClick={(e) => { e.stopPropagation(); onDelete(file.id) }} className="p-1 hover:text-red-400 text-telegram-subtext" title="Delete"><Plus className="w-4 h-4 rotate-45" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); handleContextMenu(e, file) }} className="p-1 hover:text-telegram-text text-telegram-subtext" title="More"><MoreVertical className="w-4 h-4" /></button>
                 </div>
             </div>
             <div className="text-right text-xs text-telegram-subtext truncate">{file.sizeStr}</div>

@@ -22,6 +22,9 @@ import { DriveToolsModal } from './dashboard/DriveToolsModal';
 import { TagEditorModal } from './dashboard/TagEditorModal';
 import { FloatingCreateButton } from './dashboard/FloatingCreateButton';
 import { SettingsPage } from './dashboard/SettingsPage';
+import { PasteBar } from './dashboard/PasteBar';
+import { RenameItemModal } from './dashboard/RenameItemModal';
+import { PropertiesModal } from './dashboard/PropertiesModal';
 
 // Hooks
 import { useTelegramConnection } from '../hooks/useTelegramConnection';
@@ -34,6 +37,11 @@ import { invokeCommand, isSavedMessagesDefaultStorage, isTauriRuntime } from '..
 import { useConfirm } from '../context/ConfirmContext';
 
 type MoveConflictStrategy = 'keep_both' | 'replace' | 'skip' | 'merge';
+type ClipboardMode = 'copy' | 'cut';
+type ClipboardState = {
+    mode: ClipboardMode;
+    items: TelegramFile[];
+};
 
 export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const queryClient = useQueryClient();
@@ -78,6 +86,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
     const [createMenuOpen, setCreateMenuOpen] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+    const [clipboardState, setClipboardState] = useState<ClipboardState | null>(null);
+    const [renameTarget, setRenameTarget] = useState<TelegramFile | null>(null);
+    const [propertiesTarget, setPropertiesTarget] = useState<TelegramFile | null>(null);
 
     useEffect(() => {
         if (driveView !== 'files' && createMenuOpen) {
@@ -205,6 +216,102 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             return false;
         }
     }, [unlockedProtectedIds]);
+
+    const getActionItems = useCallback((item?: TelegramFile) => {
+        const ids = item
+            ? (selectedIds.includes(item.id) ? selectedIds : [item.id])
+            : selectedIds;
+        return displayedFiles.filter((file) => ids.includes(file.id));
+    }, [displayedFiles, selectedIds]);
+
+    const startClipboardAction = useCallback(async (mode: ClipboardMode, items: TelegramFile[]) => {
+        if (driveView !== 'files') {
+            toast.info('Open a folder before using cut or copy.');
+            return;
+        }
+        const availableItems = items.filter((item) => !item.trashed);
+        if (availableItems.length === 0) {
+            toast.info('Select at least one item.');
+            return;
+        }
+        for (const item of availableItems) {
+            if (!await ensureProtectedAccess(item, mode === 'cut' ? 'cut' : 'copy')) return;
+        }
+        setClipboardState({
+            mode,
+            items: availableItems.map(cloneClipboardItem),
+        });
+        setSelectedIds([]);
+        toast.success(`${mode === 'cut' ? 'Cut' : 'Copied'} ${availableItems.length} item(s). Open a folder and paste.`);
+    }, [driveView, ensureProtectedAccess]);
+
+    const handleSelectedCut = useCallback(() => {
+        void startClipboardAction('cut', getActionItems());
+    }, [getActionItems, startClipboardAction]);
+
+    const handleSelectedCopy = useCallback(() => {
+        void startClipboardAction('copy', getActionItems());
+    }, [getActionItems, startClipboardAction]);
+
+    const handlePasteClipboard = useCallback(() => {
+        void (async () => {
+            if (!clipboardState || clipboardState.items.length === 0) {
+                toast.info('Nothing to paste.');
+                return;
+            }
+            if (driveView !== 'files') {
+                toast.info('Open a folder to paste items.');
+                return;
+            }
+            if (isTargetInsideClipboardFolder(clipboardState.items, activeFolderId, folders)) {
+                toast.error('Cannot paste a folder into itself.');
+                return;
+            }
+
+            const action = clipboardState.mode === 'copy' ? 'copy' : 'move';
+            for (const item of clipboardState.items) {
+                if (!await ensureProtectedAccess(item, action)) return;
+            }
+
+            const toastId = toast.loading(`${clipboardState.mode === 'copy' ? 'Copying' : 'Moving'} ${clipboardState.items.length} item(s)...`);
+            try {
+                if (clipboardState.mode === 'copy') {
+                    for (const item of clipboardState.items) {
+                        await invokeCommand('cmd_copy_item', {
+                            messageId: item.id,
+                            itemType: item.type || 'file',
+                            targetFolderId: activeFolderId,
+                        });
+                    }
+                } else {
+                    const conflictStrategy = resolveMoveConflictStrategy(clipboardState.items, folders, activeFolderId, 'keep_both');
+                    if (!conflictStrategy) {
+                        toast.dismiss(toastId);
+                        return;
+                    }
+                    const targetHint = getFolderTargetHint(activeFolderId, folders);
+                    const files = clipboardState.items.filter((item) => item.type !== 'folder').map((item) => item.id);
+                    const folderIds = clipboardState.items.filter((item) => item.type === 'folder').map((item) => item.id);
+                    if (files.length > 0) {
+                        await invokeCommand('cmd_move_files', { messageIds: files, targetFolderId: activeFolderId, conflictStrategy, ...targetHint });
+                    }
+                    if (folderIds.length > 0) {
+                        await invokeCommand('cmd_move_folders', { folderIds, targetParentId: activeFolderId, conflictStrategy, ...targetHint });
+                        if (conflictStrategy === 'keep_both') {
+                            await applyFolderParentMove(folderIds, activeFolderId);
+                        }
+                    }
+                }
+                if (savedMessagesDefault) await invokeCommand('cmd_flush_manifest').catch(() => undefined);
+                setClipboardState(null);
+                queryClient.invalidateQueries({ queryKey: ['files'] });
+                await handleSyncAndStamp();
+                toast.success(`${clipboardState.mode === 'copy' ? 'Copied' : 'Moved'} ${clipboardState.items.length} item(s).`, { id: toastId });
+            } catch (e) {
+                toast.error(`Paste failed: ${friendlyDriveError(e)}`, { id: toastId });
+            }
+        })();
+    }, [activeFolderId, applyFolderParentMove, clipboardState, driveView, ensureProtectedAccess, folders, handleSyncAndStamp, queryClient, savedMessagesDefault]);
 
     const restoreItems = useCallback(async (items: TelegramFile[]) => {
         const missingOriginalParents = items.filter((item) => {
@@ -417,13 +524,33 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         })();
     }, [driveView, ensureProtectedAccess, selectedIds, displayedFiles, setActiveFolderId]);
 
+    const handleSelectedRename = useCallback(() => {
+        void (async () => {
+            const [item] = getActionItems();
+            if (!item || selectedIds.length !== 1 || item.trashed) return;
+            if (!await ensureProtectedAccess(item, 'rename')) return;
+            setRenameTarget(item);
+        })();
+    }, [ensureProtectedAccess, getActionItems, selectedIds.length]);
+
+    const handleSelectedProperties = useCallback(() => {
+        const [item] = getActionItems();
+        if (!item || selectedIds.length !== 1) return;
+        setPropertiesTarget(item);
+    }, [getActionItems, selectedIds.length]);
+
     useKeyboardShortcuts({
         onSelectAll: handleSelectAll,
         onDelete: handleKeyboardDelete,
         onEscape: handleEscape,
         onSearch: handleFocusSearch,
         onEnter: handleEnter,
-        enabled: !previewFile && !playingFile && !pdfFile && !showMoveModal && !showTools && !showSettings && !tagTarget // Disable when modals are open
+        onCut: handleSelectedCut,
+        onCopy: handleSelectedCopy,
+        onPaste: handlePasteClipboard,
+        onRename: handleSelectedRename,
+        onProperties: handleSelectedProperties,
+        enabled: !previewFile && !playingFile && !pdfFile && !showMoveModal && !showTools && !showSettings && !tagTarget && !renameTarget && !propertiesTarget // Disable when modals are open
     });
 
 
@@ -438,6 +565,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         setPdfFile(null);
         setPreviewContextFiles([]);
         setPreviewContextIndex(-1);
+        setRenameTarget(null);
+        setPropertiesTarget(null);
         if (driveView !== 'trash') {
             setActiveTrashFolderId(null);
             setTrashBreadcrumbs([]);
@@ -903,17 +1032,26 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     const handleRenameItem = useCallback(async (file: TelegramFile) => {
         if (!await ensureProtectedAccess(file, 'rename')) return;
-        const nextName = window.prompt('Rename', file.name)?.trim();
-        if (!nextName || nextName === file.name) return;
+        setRenameTarget(file);
+    }, [ensureProtectedAccess]);
+
+    const handleRenameSave = useCallback(async (nextName: string) => {
+        const file = renameTarget;
+        if (!file) return;
+        if (!nextName || nextName === file.name) {
+            setRenameTarget(null);
+            return;
+        }
         try {
             await invokeCommand('cmd_rename_item', { messageId: file.id, itemType: file.type || 'file', name: nextName });
             queryClient.invalidateQueries({ queryKey: ['files'] });
             await handleSyncAndStamp();
+            setRenameTarget(null);
             toast.success(`Renamed to "${nextName}"`);
         } catch (e) {
             toast.error(`Rename failed: ${friendlyDriveError(e)}`);
         }
-    }, [ensureProtectedAccess, handleSyncAndStamp, queryClient]);
+    }, [handleSyncAndStamp, queryClient, renameTarget]);
 
     const handleCreateFolderHere = useCallback(async () => {
         if (driveView !== 'files') {
@@ -933,21 +1071,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }, [activeFolderId, driveView, handleCreateFolder, handleSyncAndStamp, queryClient, uploadTargetLabel]);
 
     const handleCopyItem = useCallback(async (file: TelegramFile) => {
-        if (!await ensureProtectedAccess(file, 'copy')) return;
-        const toastId = toast.loading(`Copying "${file.name}"...`);
-        try {
-            await invokeCommand('cmd_copy_item', {
-                messageId: file.id,
-                itemType: file.type || 'file',
-                targetFolderId: file.folderId === undefined ? activeFolderId : file.folderId,
-            });
-            queryClient.invalidateQueries({ queryKey: ['files'] });
-            await handleSyncAndStamp();
-            toast.success(`Copied "${file.name}".`, { id: toastId });
-        } catch (e) {
-            toast.error(`Copy failed: ${friendlyDriveError(e)}`, { id: toastId });
-        }
-    }, [activeFolderId, ensureProtectedAccess, handleSyncAndStamp, queryClient]);
+        await startClipboardAction('copy', getActionItems(file));
+    }, [getActionItems, startClipboardAction]);
+
+    const handleCutItem = useCallback(async (file: TelegramFile) => {
+        await startClipboardAction('cut', getActionItems(file));
+    }, [getActionItems, startClipboardAction]);
 
     const handleMergeFolder = useCallback(async (file: TelegramFile) => {
         if (file.type !== 'folder') return;
@@ -1040,6 +1169,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         }
     }, []);
 
+    const handlePropertiesItem = useCallback((file: TelegramFile) => {
+        setPropertiesTarget(file);
+    }, []);
+
     const handleDataChanged = useCallback(() => {
         queryClient.invalidateQueries({ queryKey: ['files'] });
         queryClient.invalidateQueries({ queryKey: ['bandwidth'] });
@@ -1086,6 +1219,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const handleMobileBack = useCallback(() => {
         if (createMenuOpen) {
             setCreateMenuOpen(false);
+            return true;
+        }
+        if (renameTarget) {
+            setRenameTarget(null);
+            return true;
+        }
+        if (propertiesTarget) {
+            setPropertiesTarget(null);
             return true;
         }
         if (tagTarget) {
@@ -1156,7 +1297,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         mobileSidebarOpen,
         pdfFile,
         playingFile,
+        propertiesTarget,
         previewFile,
+        renameTarget,
         searchTerm,
         selectedIds.length,
         showSettings,
@@ -1265,6 +1408,22 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                         onClose={() => setTagTarget(null)}
                     />
                 )}
+                {renameTarget && (
+                    <RenameItemModal
+                        key="rename-item"
+                        item={renameTarget}
+                        onSave={handleRenameSave}
+                        onClose={() => setRenameTarget(null)}
+                    />
+                )}
+                {propertiesTarget && (
+                    <PropertiesModal
+                        key="properties-item"
+                        item={propertiesTarget}
+                        location={getItemLocationLabel(propertiesTarget, folders)}
+                        onClose={() => setPropertiesTarget(null)}
+                    />
+                )}
             </AnimatePresence>
 
             {mobileSidebarOpen && (
@@ -1316,6 +1475,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     allSelected={allDisplayedSelected}
                     selectableCount={selectableIds.length}
                     onShowMoveModal={() => { setMoveConflictStrategy('keep_both'); setShowMoveModal(true); }}
+                    onBulkCut={handleSelectedCut}
+                    onBulkCopy={handleSelectedCopy}
                     onBulkDownload={handleSelectedBulkDownload}
                     onBulkDelete={handleSelectedDelete}
                     onBulkRestore={driveView === 'trash' ? handleSelectedRestore : undefined}
@@ -1359,8 +1520,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onRename={handleRenameItem}
                     onSetFolderColor={handleFolderColor}
                     onShowVersions={handleShowVersions}
+                    onCut={handleCutItem}
                     onCopy={handleCopyItem}
                     onMove={handleStartMoveItem}
+                    onProperties={handlePropertiesItem}
                     onMergeFolder={handleMergeFolder}
                     onToggleLock={handleToggleLock}
                     onToggleProtection={handleToggleProtection}
@@ -1376,6 +1539,16 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onUploadFiles={handleManualUpload}
                     onUploadFolder={handleManualFolderUpload}
                     onCreateFolder={handleCreateFolderHere}
+                />
+            )}
+
+            {clipboardState && (
+                <PasteBar
+                    mode={clipboardState.mode}
+                    count={clipboardState.items.length}
+                    disabled={driveView !== 'files'}
+                    onPaste={handlePasteClipboard}
+                    onClear={() => setClipboardState(null)}
                 />
             )}
 
@@ -1534,6 +1707,34 @@ function mergeFolders(folders: TelegramFolder[]): TelegramFolder[] {
 
 function protectedItemKey(item: TelegramFile): string {
     return `${item.type === 'folder' ? 'folder' : 'file'}:${item.id}`;
+}
+
+function cloneClipboardItem(item: TelegramFile): TelegramFile {
+    return {
+        ...item,
+        tags: item.tags ? [...item.tags] : undefined,
+    };
+}
+
+function isTargetInsideClipboardFolder(items: TelegramFile[], targetFolderId: number | null, folders: TelegramFolder[]): boolean {
+    if (targetFolderId === null) return false;
+    return items.some((item) => item.type === 'folder' && collectFolderTreeIdsForDashboard(item.id, folders).has(targetFolderId));
+}
+
+function collectFolderTreeIdsForDashboard(folderId: number, folders: TelegramFolder[]): Set<number> {
+    const ids = new Set<number>([folderId]);
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const folder of folders) {
+            const parentId = folder.parent_id ?? null;
+            if (parentId !== null && ids.has(parentId) && !ids.has(folder.id)) {
+                ids.add(folder.id);
+                changed = true;
+            }
+        }
+    }
+    return ids;
 }
 
 function resolveMoveConflictStrategy(

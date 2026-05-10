@@ -35,8 +35,10 @@ interface FileExplorerProps {
     onRename?: (file: TelegramFile) => void;
     onSetFolderColor?: (file: TelegramFile, color: string) => void;
     onShowVersions?: (file: TelegramFile) => void;
+    onCut?: (file: TelegramFile) => void;
     onCopy?: (file: TelegramFile) => void;
     onMove?: (file: TelegramFile) => void;
+    onProperties?: (file: TelegramFile) => void;
     onMergeFolder?: (file: TelegramFile) => void;
     onToggleLock?: (file: TelegramFile) => void;
     onToggleProtection?: (file: TelegramFile) => void;
@@ -52,7 +54,7 @@ type NavigatorWithUserAgentData = Navigator & {
 
 const MOBILE_GRID_MAX_TOUCH_VIEWPORT_WIDTH = 900;
 const MOBILE_GRID_MAX_TOUCH_SCREEN_SIDE = 1024;
-const MOBILE_GRID_MAX_CONTAINER_WIDTH = 900;
+const MATERIAL_GRID_MIN_COLUMN_WIDTH = 180;
 
 function shouldUseMobileGrid() {
     if (typeof window === 'undefined') return false;
@@ -86,7 +88,7 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>, en
         const updateColumns = () => {
             const width = containerRef.current?.clientWidth || 800;
             setContainerWidth(width);
-            setColumns(width <= MOBILE_GRID_MAX_CONTAINER_WIDTH || shouldUseMobileGrid() ? 2 : 4);
+            setColumns(Math.max(2, Math.floor(width / MATERIAL_GRID_MIN_COLUMN_WIDTH)));
         };
 
         updateColumns();
@@ -123,7 +125,7 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>, en
 
 export function FileExplorer({
     files, loading, error, viewMode, selectedIds, activeFolderId,
-    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onRename, onSetFolderColor, onShowVersions, onCopy, onMove, onMergeFolder, onToggleLock, onToggleProtection, getItemPath, highlightedId
+    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onRename, onSetFolderColor, onShowVersions, onCut, onCopy, onMove, onProperties, onMergeFolder, onToggleLock, onToggleProtection, getItemPath, highlightedId
 }: FileExplorerProps) {
     const [sortField, setSortField] = useState<SortField>('name');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -134,10 +136,10 @@ export function FileExplorer({
     const { columns, containerWidth } = useGridColumns(parentRef, gridReady);
     const selectionMode = selectedIds.length > 0;
 
-    const GAP = containerWidth < 640 ? 12 : 6;
+    const GAP = containerWidth < 640 ? 12 : 8;
     const cardWidth = (containerWidth - (GAP * (columns - 1))) / columns;
-    const cardHeight = cardWidth;
-    const rowHeight = Math.max(cardHeight + GAP, 150);
+    const cardHeight = Math.max(cardWidth / 1.78 + 52, 124);
+    const rowHeight = cardHeight;
 
     const handleContextMenu = useCallback((e: React.MouseEvent, file: TelegramFile) => {
         e.preventDefault();
@@ -339,8 +341,6 @@ export function FileExplorer({
                                                 onClick={(e) => onFileClick(e, file.id)}
                                                 onContextMenu={(e) => handleContextMenu(e, file)}
                                                 onOpenContextMenu={(x, y) => setContextMenu({ x, y, file })}
-                                                onDelete={() => onDelete(file.id)}
-                                                onDownload={() => onDownload(file.id, file.name)}
                                                 onPreview={() => handlePreviewRequest(file)}
                                                 onDrop={onDrop}
                                                 onDragStart={onDragStart}
@@ -491,12 +491,20 @@ export function FileExplorer({
                         onShowVersions(contextMenu.file);
                         setContextMenu(null);
                     } : undefined}
+                    onCut={onCut && !contextMenu.file.trashed ? () => {
+                        onCut(contextMenu.file);
+                        setContextMenu(null);
+                    } : undefined}
                     onCopy={onCopy ? () => {
                         onCopy(contextMenu.file);
                         setContextMenu(null);
                     } : undefined}
                     onMove={onMove && !contextMenu.file.trashed ? () => {
                         onMove(contextMenu.file);
+                        setContextMenu(null);
+                    } : undefined}
+                    onProperties={onProperties ? () => {
+                        onProperties(contextMenu.file);
                         setContextMenu(null);
                     } : undefined}
                     onMergeFolder={onMergeFolder ? () => {
