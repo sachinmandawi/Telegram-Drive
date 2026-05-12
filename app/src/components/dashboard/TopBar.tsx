@@ -81,15 +81,6 @@ export function TopBar({
                             {syncStatusText}
                         </div>
                     )}
-                    {['type:pdf', 'type:image', 'trash', 'size>10mb'].map((chip) => (
-                        <button
-                            key={chip}
-                            onClick={() => onSearchChange(chip)}
-                            className="hidden rounded border border-telegram-border px-2 py-1 text-[11px] text-telegram-subtext hover:bg-telegram-hover hover:text-telegram-text xl:inline-flex"
-                        >
-                            {chip}
-                        </button>
-                    ))}
                 </div>
 
                 {selectedIds.length > 0 && (
