@@ -26,7 +26,7 @@ export function TopBar({
     currentFolderName, selectedIds, onShowMoveModal, onBulkCut, onBulkCopy, onBulkDownload, onBulkDelete,
     onBulkTag, searchTerm, onSearchChange, savedMessagesOnly = false,
     onSelectAll, onClearSelection, allSelected, selectableCount, breadcrumbs, onBulkRestore,
-    syncStatusText, onOpenSidebar
+    onOpenSidebar
 }: TopBarProps) {
     const visibleBreadcrumbs = breadcrumbs && breadcrumbs.length > 0 ? breadcrumbs : [{ label: 'Start' }, { label: currentFolderName }];
 
@@ -73,14 +73,6 @@ export function TopBar({
                             onChange={(e) => onSearchChange(e.target.value)}
                         />
                     </div>
-                    {syncStatusText && (
-                        <div
-                            className="hidden h-8 shrink-0 items-center rounded-lg border border-telegram-border/80 px-2 text-[11px] leading-none text-telegram-subtext xl:flex"
-                            title={syncStatusText}
-                        >
-                            {syncStatusText}
-                        </div>
-                    )}
                 </div>
 
                 {selectedIds.length > 0 && (
