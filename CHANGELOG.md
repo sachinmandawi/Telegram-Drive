@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.42] - 2026-05-14
+
+### Toolbar Cleanup
+
+- Removed the quick filter chips from the top bar so selection actions no longer overlap.
+- Hid the top bar sync status badge from the main toolbar.
+- Bumped app, Tauri, and release versions to 1.1.42.
+
 ## [1.1.41] - 2026-05-10
 
 ### MaterialFiles-Style Preview
