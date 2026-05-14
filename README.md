@@ -4,7 +4,7 @@
   <h1>Telegram Drive</h1>
 
   <img
-    src="https://readme-typing-svg.demolab.com?font=Inter&weight=700&size=28&duration=2600&pause=700&color=2AABEE&center=true&vCenter=true&width=760&lines=Your+Telegram+Saved+Messages+as+a+cloud+drive;Website+%2B+Windows+%2B+Android+APK;Folders%2C+preview%2C+trash%2C+search%2C+and+sync"
+    src="https://readme-typing-svg.demolab.com?font=Inter&weight=700&size=28&duration=2600&pause=700&color=2AABEE&center=true&vCenter=true&width=760&lines=Your+Telegram+Saved+Messages+as+a+cloud+drive;Website+%2B+Desktop+%2B+Android+%2B+Chrome;Folders%2C+preview%2C+trash%2C+search%2C+and+sync"
     alt="Animated Telegram Drive feature headline"
   />
 
@@ -62,7 +62,8 @@ Telegram Drive turns your Telegram Saved Messages into a familiar drive-style fi
 - Folder moves update immediately and preserve nested children instead of flattening folder trees.
 - OCR and the heavy Tesseract dependency were removed.
 - Manual checksum verification was removed from the UI.
-- Website, desktop, and Android APK release workflows are aligned under `v1.1.42`.
+- Chrome extension launcher ZIPs are published with GitHub Releases.
+- Website, desktop, Android APK, and Chrome extension release workflows are aligned under `v1.1.43`.
 
 ## Features
 
@@ -97,6 +98,7 @@ Telegram Drive turns your Telegram Saved Messages into a familiar drive-style fi
 | Windows | Download the `.msi` or `.exe` asset from the latest release. |
 | macOS/Linux | Download the Intel, Apple Silicon, AppImage, or package asset generated for your platform. |
 | Android | Download the debug APK that matches your device ABI, or use the universal/debug asset if present. |
+| Chrome Extension | Download `Telegram_Drive_<version>_chrome_extension.zip`, unzip it, and load the unzipped folder from `chrome://extensions`. |
 
 > Android APKs are debug-signed for testing. Use a release keystore before publishing to an app store.
 
@@ -141,6 +143,14 @@ cd app
 npm run build
 npm run tauri build
 ```
+
+### Load Chrome Extension Locally
+
+```bash
+chrome://extensions
+```
+
+Enable **Developer mode**, choose **Load unpacked**, and select the `extension` folder.
 
 ## Telegram Credentials
 

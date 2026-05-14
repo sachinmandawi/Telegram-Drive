@@ -32,7 +32,7 @@ jobs:
               repo: context.repo.repo,
               tag_name: `v${{ steps.get_version.outputs.VERSION }}`,
               name: `Telegram Drive v${{ steps.get_version.outputs.VERSION }}`,
-              body: `Telegram Drive v${{ steps.get_version.outputs.VERSION }} includes desktop builds for Windows, Linux, macOS Intel, and macOS Apple Silicon, plus split Android debug APKs for arm64, armv7, x86, and x86_64 device testing.\n\nThe Android APKs are debug-signed for direct testing. Use a release keystore before publishing to Google Play.\n\nSee the assets below to download and install.`,
+              body: `Telegram Drive v${{ steps.get_version.outputs.VERSION }} includes desktop builds for Windows, Linux, macOS Intel, and macOS Apple Silicon, split Android debug APKs for arm64, armv7, x86, and x86_64 device testing, and a Chrome extension launcher ZIP.\n\nThe Android APKs are debug-signed for direct testing. Use a release keystore before publishing to Google Play.\n\nFor Chrome, download the extension ZIP, unzip it, enable Developer mode at chrome://extensions, and load the extension folder unpacked.\n\nSee the assets below to download and install.`,
               draft: true,
               prerelease: false
             });
@@ -337,8 +337,54 @@ jobs:
 
           gh release upload "$GITHUB_REF_NAME" "${ARTIFACT_DIR}"/*.apk --clobber
 
+  build-chrome-extension:
+    needs: create-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate Chrome extension manifest
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          export VERSION="${VERSION#v}"
+          node <<'NODE'
+          const fs = require('fs');
+          const version = process.env.VERSION;
+          const manifest = JSON.parse(fs.readFileSync('extension/manifest.json', 'utf8'));
+          if (manifest.manifest_version !== 3) {
+            throw new Error(`Expected Manifest V3, got ${manifest.manifest_version}`);
+          }
+          if (manifest.version !== version) {
+            throw new Error(`Extension version ${manifest.version} does not match release ${version}`);
+          }
+          for (const size of ['16', '32', '48', '128']) {
+            const icon = `extension/icons/icon${size}.png`;
+            if (!fs.existsSync(icon)) throw new Error(`Missing icon: ${icon}`);
+          }
+          NODE
+
+      - name: Package and upload Chrome extension
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          ZIP_NAME="Telegram_Drive_${VERSION}_chrome_extension.zip"
+
+          (
+            cd extension
+            zip -r "../${ZIP_NAME}" manifest.json popup.html popup.css popup.js README.md icons
+          )
+
+          unzip -l "${ZIP_NAME}" | grep -q "manifest.json"
+          gh release upload "$GITHUB_REF_NAME" "${ZIP_NAME}" --clobber
+
   publish-release:
-    needs: [create-release, build-tauri, build-android]
+    needs: [create-release, build-tauri, build-android, build-chrome-extension]
     runs-on: ubuntu-latest
     permissions:
       contents: write

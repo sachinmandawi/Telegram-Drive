@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.43] - 2026-05-14
+
+### Chrome Extension
+
+- Added a Manifest V3 Chrome extension launcher for Telegram Drive.
+- Added release packaging so the Chrome extension ZIP is uploaded with tagged GitHub releases.
+- Bumped app, Tauri, Chrome extension, and release versions to 1.1.43.
+
 ## [1.1.42] - 2026-05-14
 
 ### Toolbar Cleanup

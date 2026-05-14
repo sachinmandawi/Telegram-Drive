@@ -20,3 +20,5 @@ CompiledApps/
 *.log
 Error.html
 **/LatestError.html
+extension/dist/
+*_chrome_extension.zip
