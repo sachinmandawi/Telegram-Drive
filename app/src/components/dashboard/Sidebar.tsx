@@ -38,7 +38,7 @@ export function Sidebar({
     const submitCreate = async () => {
         if (!newFolderName.trim()) return;
         try {
-            await onCreate(newFolderName, activeDriveView === 'files' ? activeFolderId : null);
+            await onCreate(newFolderName, null);
             setNewFolderName("");
             setShowNewFolderInput(false);
         } catch {

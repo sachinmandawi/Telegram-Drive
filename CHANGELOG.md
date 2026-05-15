@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.44] - 2026-05-15
+
+### Sidebar Folder Creation
+
+- Changed the sidebar Create Folder action to always create a root sidebar folder instead of using the currently opened folder as the parent.
+- Removed the Chrome extension launcher and release ZIP packaging.
+- Bumped app, Tauri, and release versions to 1.1.44.
+
 ## [1.1.43] - 2026-05-14
 
 ### Chrome Extension
