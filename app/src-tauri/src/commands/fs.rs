@@ -2,10 +2,12 @@ use crate::bandwidth::BandwidthManager;
 use crate::commands::utils::{map_error, resolve_peer};
 use crate::models::{FileMetadata, FolderMetadata};
 use crate::TelegramState;
+use base64::{engine::general_purpose, Engine as _};
 use grammers_client::types::{Media, Peer};
 use grammers_client::InputMessage;
 use grammers_tl_types as tl;
-use tauri::{Emitter, State};
+use std::path::{Path, PathBuf};
+use tauri::{Emitter, Manager, State};
 
 #[tauri::command]
 pub async fn cmd_create_folder(
@@ -117,6 +119,12 @@ pub async fn cmd_delete_folder(
 struct ProgressPayload {
     id: String,
     percent: u8,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct SavedDownloadPayload {
+    pub path: String,
+    pub filename: String,
 }
 
 #[tauri::command]
@@ -313,6 +321,115 @@ pub async fn cmd_download_file(
     }
 
     Ok("Download successful".to_string())
+}
+
+#[tauri::command]
+pub async fn cmd_save_download_bytes(
+    filename: String,
+    bytes_base64: String,
+    app_handle: tauri::AppHandle,
+) -> Result<SavedDownloadPayload, String> {
+    let bytes = general_purpose::STANDARD
+        .decode(bytes_base64)
+        .map_err(|e| format!("Invalid download data: {}", e))?;
+    let safe_filename = sanitize_download_filename(&filename);
+    let download_dirs = resolve_download_dirs(&app_handle)?;
+    let mut errors = Vec::new();
+
+    for downloads_dir in download_dirs {
+        if let Err(error) = std::fs::create_dir_all(&downloads_dir) {
+            errors.push(format!("{}: {}", downloads_dir.display(), error));
+            continue;
+        }
+
+        let save_path = unique_download_path(&downloads_dir, &safe_filename);
+        match std::fs::write(&save_path, &bytes) {
+            Ok(_) => {
+                return Ok(SavedDownloadPayload {
+                    path: save_path.to_string_lossy().to_string(),
+                    filename: save_path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or(&safe_filename)
+                        .to_string(),
+                });
+            }
+            Err(error) => errors.push(format!("{}: {}", save_path.display(), error)),
+        }
+    }
+
+    Err(format!("Failed to save download: {}", errors.join("; ")))
+}
+
+fn resolve_download_dirs(app_handle: &tauri::AppHandle) -> Result<Vec<PathBuf>, String> {
+    let mut dirs = Vec::new();
+
+    if let Ok(path) = app_handle.path().download_dir() {
+        dirs.push(path);
+    }
+
+    if let Ok(path) = app_handle.path().app_data_dir() {
+        let fallback = path.join("Downloads");
+        if !dirs.iter().any(|existing| existing == &fallback) {
+            dirs.push(fallback);
+        }
+    }
+
+    if dirs.is_empty() {
+        Err("Could not resolve a Downloads folder.".to_string())
+    } else {
+        Ok(dirs)
+    }
+}
+
+fn sanitize_download_filename(filename: &str) -> String {
+    let cleaned = filename
+        .chars()
+        .map(|ch| match ch {
+            '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0' => '_',
+            _ => ch,
+        })
+        .collect::<String>()
+        .trim()
+        .trim_matches('.')
+        .to_string();
+
+    if cleaned.is_empty() {
+        "download".to_string()
+    } else {
+        cleaned
+    }
+}
+
+fn unique_download_path(downloads_dir: &Path, filename: &str) -> PathBuf {
+    let initial = downloads_dir.join(filename);
+    if !initial.exists() {
+        return initial;
+    }
+
+    let path = Path::new(filename);
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("download");
+    let extension = path.extension().and_then(|value| value.to_str());
+
+    for index in 1..10_000 {
+        let candidate_name = match extension {
+            Some(ext) if !ext.is_empty() => format!("{} ({index}).{}", stem, ext),
+            _ => format!("{} ({index})", stem),
+        };
+        let candidate = downloads_dir.join(candidate_name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+
+    downloads_dir.join(format!(
+        "{}-{}",
+        chrono::Local::now().timestamp_millis(),
+        filename
+    ))
 }
 
 #[tauri::command]

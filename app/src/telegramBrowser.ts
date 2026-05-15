@@ -1484,7 +1484,7 @@ async function getSavedMessages(client: TelegramClientInstance, query?: string):
     return messages;
 }
 
-async function telegramDownloadBlob(messageId: number): Promise<{ blob: Blob; name: string }> {
+export async function telegramDownloadBlob(messageId: number): Promise<{ blob: Blob; name: string }> {
     const client = await authorizedTelegramClient();
     const message = await getTelegramMessage(messageId);
     const manifest = await getDriveManifest();

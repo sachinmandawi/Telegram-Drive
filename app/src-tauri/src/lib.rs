@@ -102,6 +102,7 @@ pub fn run() {
             commands::cmd_log,
             commands::cmd_delete_file,
             commands::cmd_download_file,
+            commands::cmd_save_download_bytes,
             commands::cmd_move_files,
             commands::cmd_create_folder,
             commands::cmd_delete_folder,

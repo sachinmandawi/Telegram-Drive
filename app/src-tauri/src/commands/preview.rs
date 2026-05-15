@@ -51,8 +51,9 @@ fn text_preview_mime(ext: &str, mime_hint: Option<&str>) -> Option<String> {
         | "markdown" | "csv" | "tsv" | "xml" | "html" | "htm" | "css" | "scss" | "less" | "js"
         | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "py" | "java" | "c" | "cpp" | "cc" | "h"
         | "hpp" | "cs" | "go" | "rs" | "php" | "rb" | "sh" | "bash" | "zsh" | "ps1" | "bat"
-        | "cmd" | "sql" | "rtf" | "srt" | "vtt" | "ass" | "ssa" | "lrc" | "nfo"
-        | "properties" => "text/plain;charset=utf-8",
+        | "cmd" | "sql" | "rtf" | "srt" | "vtt" | "ass" | "ssa" | "lrc" | "nfo" | "properties" => {
+            "text/plain;charset=utf-8"
+        }
         "json" | "jsonl" => "application/json;charset=utf-8",
         _ => "",
     };
@@ -190,8 +191,10 @@ pub async fn cmd_get_preview(
                         }
                     }
                 }
-                if ["jpg", "jpeg", "jfif", "png", "gif", "webp", "bmp", "svg", "avif", "ico"]
-                    .contains(&lower_ext.as_str())
+                if [
+                    "jpg", "jpeg", "jfif", "png", "gif", "webp", "bmp", "svg", "avif", "ico",
+                ]
+                .contains(&lower_ext.as_str())
                 {
                     log::info!("Converting image to Base64...");
                     match std::fs::read(&save_path) {
@@ -325,13 +328,13 @@ pub async fn cmd_get_thumbnail(
                 if client.download_media(&media, &save_path_str).await.is_ok() {
                     if let Ok(bytes) = std::fs::read(&save_path) {
                         let mime = match ext.as_str() {
-                        "png" => "image/png",
-                        "gif" => "image/gif",
-                        "webp" => "image/webp",
-                        "avif" => "image/avif",
-                        "ico" => "image/x-icon",
-                        _ => "image/jpeg",
-                    };
+                            "png" => "image/png",
+                            "gif" => "image/gif",
+                            "webp" => "image/webp",
+                            "avif" => "image/avif",
+                            "ico" => "image/x-icon",
+                            _ => "image/jpeg",
+                        };
                         let b64 = general_purpose::STANDARD.encode(&bytes);
                         return Ok(format!("data:{};base64,{}", mime, b64));
                     }

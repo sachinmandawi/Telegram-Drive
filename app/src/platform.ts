@@ -15,6 +15,7 @@ import {
     telegramCreateFolder,
     telegramDeleteFolder,
     telegramDeleteFile,
+    telegramDownloadBlob,
     telegramDownloadFile,
     telegramFlushManifest,
     telegramGetFiles,
@@ -129,6 +130,8 @@ export const telegramApiDefaults = () => ({
     apiId: import.meta.env.VITE_TELEGRAM_API_ID || '',
     apiHash: import.meta.env.VITE_TELEGRAM_API_HASH || '',
 });
+
+let mobileDownloadPermissionGranted = false;
 
 class BrowserStore implements AppStore {
     private data: Record<string, unknown>;
@@ -453,6 +456,13 @@ export async function uploadBrowserFile(
 
 export async function downloadBrowserFile(messageId: number, filename?: string): Promise<void> {
     if (isSavedMessagesDefaultStorage()) {
+        if (isTauriRuntime()) {
+            await downloadSavedMessagesFileToNativeDownloads(messageId, filename);
+            return;
+        }
+        if (!await requestMobileDownloadPermission(sanitizeDownloadName(filename || `Telegram-file-${messageId}`))) {
+            throw new Error('Download cancelled.');
+        }
         await telegramDownloadFile(messageId, filename);
         return;
     }
@@ -471,6 +481,59 @@ export async function downloadBrowserFile(messageId: number, filename?: string):
     anchor.remove();
     addBandwidth('down_bytes', record.size);
     window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+async function downloadSavedMessagesFileToNativeDownloads(messageId: number, filename?: string): Promise<void> {
+    const requestedName = sanitizeDownloadName(filename || `Telegram-file-${messageId}`);
+    if (!await requestMobileDownloadPermission(requestedName)) {
+        throw new Error('Download cancelled.');
+    }
+
+    const { blob, name } = await telegramDownloadBlob(messageId);
+    const targetName = sanitizeDownloadName(filename || name || requestedName);
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('cmd_save_download_bytes', {
+        filename: targetName,
+        bytesBase64: uint8ArrayToBase64(bytes),
+    });
+}
+
+async function requestMobileDownloadPermission(filename: string): Promise<boolean> {
+    if (!isLikelyMobileDevice()) return true;
+    if (mobileDownloadPermissionGranted) return true;
+
+    const allowed = window.confirm(
+        `Allow Telegram Drive to save downloads on this device?\n\n"${filename}" will be saved to Downloads when Android allows it.`
+    );
+    mobileDownloadPermissionGranted = allowed;
+    return allowed;
+}
+
+function isLikelyMobileDevice(): boolean {
+    if (typeof window === 'undefined') return false;
+    const navigatorWithData = navigator as Navigator & { userAgentData?: { mobile?: boolean } };
+    return Boolean(navigatorWithData.userAgentData?.mobile)
+        || /android|iphone|ipad|ipod|iemobile|mobile/i.test(navigator.userAgent)
+        || ((navigator.maxTouchPoints || 0) > 0 && Math.min(window.innerWidth, window.innerHeight) <= 900);
+}
+
+function sanitizeDownloadName(name: string): string {
+    return String(name || 'download')
+        .replace(/[\\/:*?"<>|]/g, '_')
+        .replace(/\s+/g, ' ')
+        .trim()
+        || 'download';
+}
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+        const chunk = bytes.subarray(offset, offset + chunkSize);
+        binary += String.fromCharCode(...chunk);
+    }
+    return window.btoa(binary);
 }
 
 export async function getBrowserFileObjectUrl(messageId: number): Promise<string> {

@@ -80,7 +80,7 @@ export function EmptyState({ onUpload, onUploadFolder, onCreateFolder }: EmptySt
                         className="inline-flex items-center justify-center gap-2 rounded-xl border border-telegram-border bg-telegram-hover px-5 py-3 font-medium text-telegram-text transition-all hover:border-telegram-primary hover:text-telegram-primary active:scale-[0.98]"
                     >
                         <FolderPlus className="w-5 h-5" />
-                        Create Folder
+                        Create Folder Here
                     </button>
                 )}
             </div>

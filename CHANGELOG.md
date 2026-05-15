@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.45] - 2026-05-15
+
+### File Manager Polish
+
+- Clarified folder creation labels: sidebar creates root folders, while grid and floating actions create folders in the current location.
+- Added a direct Move action to the file and folder context menu.
+- Replaced the compact folder color dots with labeled color swatches and a Default option.
+- Added mobile/Tauri download confirmation plus native save support for Saved Messages downloads.
+- Bumped app, Tauri, and release versions to 1.1.45.
+
 ## [1.1.44] - 2026-05-15
 
 ### Sidebar Folder Creation

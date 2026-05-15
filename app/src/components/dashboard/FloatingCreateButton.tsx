@@ -25,7 +25,7 @@ export function FloatingCreateButton({
     }
 
     if (onCreateFolder) {
-        actions.push({ label: 'Create Folder', icon: FolderPlus, onClick: onCreateFolder });
+        actions.push({ label: 'Create Folder Here', icon: FolderPlus, onClick: onCreateFolder });
     }
 
     useEffect(() => {

@@ -1078,6 +1078,18 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         await startClipboardAction('cut', getActionItems(file));
     }, [getActionItems, startClipboardAction]);
 
+    const handleMoveItem = useCallback((file: TelegramFile) => {
+        if (driveView !== 'files') {
+            toast.info('Open Saved Messages or a folder before moving items.');
+            return;
+        }
+        if (file.trashed) return;
+        const ids = selectedIds.includes(file.id) ? selectedIds : [file.id];
+        setSelectedIds(ids);
+        setMoveConflictStrategy('keep_both');
+        setShowMoveModal(true);
+    }, [driveView, selectedIds]);
+
     const handleToggleLock = useCallback(async (file: TelegramFile) => {
         if (!await ensureProtectedAccess(file, file.locked ? 'unlock' : 'lock')) return;
         try {
@@ -1504,6 +1516,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     onRename={handleRenameItem}
                     onSetFolderColor={handleFolderColor}
                     onShowVersions={handleShowVersions}
+                    onMove={handleMoveItem}
                     onCut={handleCutItem}
                     onCopy={handleCopyItem}
                     onProperties={handlePropertiesItem}

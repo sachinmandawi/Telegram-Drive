@@ -35,6 +35,7 @@ interface FileExplorerProps {
     onRename?: (file: TelegramFile) => void;
     onSetFolderColor?: (file: TelegramFile, color: string) => void;
     onShowVersions?: (file: TelegramFile) => void;
+    onMove?: (file: TelegramFile) => void;
     onCut?: (file: TelegramFile) => void;
     onCopy?: (file: TelegramFile) => void;
     onProperties?: (file: TelegramFile) => void;
@@ -123,7 +124,7 @@ function useGridColumns(containerRef: React.RefObject<HTMLDivElement | null>, en
 
 export function FileExplorer({
     files, loading, error, viewMode, selectedIds, activeFolderId,
-    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onRename, onSetFolderColor, onShowVersions, onCut, onCopy, onProperties, onToggleLock, onToggleProtection, getItemPath, highlightedId
+    onFileClick, onDelete, onDownload, onPreview, onManualUpload, onManualFolderUpload, onCreateFolder, allowUpload = true, onSelectionClear, onToggleSelection, onDrop, onDragStart, onDragEnd, onRestore, onEditTags, onRename, onSetFolderColor, onShowVersions, onMove, onCut, onCopy, onProperties, onToggleLock, onToggleProtection, getItemPath, highlightedId
 }: FileExplorerProps) {
     const [sortField, setSortField] = useState<SortField>('name');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -324,7 +325,7 @@ export function FileExplorer({
                                                             onClick={(e) => { e.stopPropagation(); onCreateFolder(); }}
                                                             className="text-xs font-medium leading-tight text-telegram-subtext hover:text-telegram-primary"
                                                         >
-                                                            Create Folder
+                                                            Create Folder Here
                                                         </button>
                                                     )}
                                                 </div>
@@ -410,7 +411,7 @@ export function FileExplorer({
                                                     className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer border border-dashed border-telegram-border text-telegram-subtext hover:text-telegram-text hover:bg-telegram-hover w-full"
                                                 >
                                                     <div className="w-5 h-5 flex items-center justify-center"><FolderPlus className="w-4 h-4" /></div>
-                                                    <span className="text-sm font-medium">Create Folder...</span>
+                                                    <span className="text-sm font-medium">Create Folder Here...</span>
                                                 </button>
                                             )}
                                         </div>
@@ -487,6 +488,10 @@ export function FileExplorer({
                     } : undefined}
                     onShowVersions={onShowVersions ? () => {
                         onShowVersions(contextMenu.file);
+                        setContextMenu(null);
+                    } : undefined}
+                    onMove={onMove && !contextMenu.file.trashed ? () => {
+                        onMove(contextMenu.file);
                         setContextMenu(null);
                     } : undefined}
                     onCut={onCut && !contextMenu.file.trashed ? () => {

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CheckCircle2, Copy, Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, RotateCcw, Tag, Shield, ShieldOff, History, Lock, UnlockKeyhole, Info, Scissors } from 'lucide-react';
+import { CheckCircle2, Copy, Eye, HardDrive, Trash2, FolderOpen, Pencil, Play, FileText, RotateCcw, Tag, Shield, ShieldOff, History, Lock, UnlockKeyhole, Info, Scissors, FolderInput } from 'lucide-react';
 import { TelegramFile } from '../../types';
 import { isMediaFile, isPdfFile } from '../../utils';
 
@@ -17,6 +17,7 @@ interface ContextMenuProps {
     onRename?: () => void;
     onSetFolderColor?: (color: string) => void;
     onShowVersions?: () => void;
+    onMove?: () => void;
     onCut?: () => void;
     onCopy?: () => void;
     onProperties?: () => void;
@@ -24,7 +25,17 @@ interface ContextMenuProps {
     onToggleProtection?: () => void;
 }
 
-export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onRestore, onSelect, onEditTags, onRename, onSetFolderColor, onShowVersions, onCut, onCopy, onProperties, onToggleLock, onToggleProtection }: ContextMenuProps) {
+const folderColorOptions = [
+    { label: 'Default', value: '', preview: '#ffae00' },
+    { label: 'Yellow', value: '#facc15', preview: '#facc15' },
+    { label: 'Blue', value: '#38bdf8', preview: '#38bdf8' },
+    { label: 'Green', value: '#4ade80', preview: '#4ade80' },
+    { label: 'Pink', value: '#f472b6', preview: '#f472b6' },
+    { label: 'Purple', value: '#a78bfa', preview: '#a78bfa' },
+    { label: 'Rose', value: '#fb7185', preview: '#fb7185' },
+];
+
+export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPreview, onRestore, onSelect, onEditTags, onRename, onSetFolderColor, onShowVersions, onMove, onCut, onCopy, onProperties, onToggleLock, onToggleProtection }: ContextMenuProps) {
     const [adjustedPos, setAdjustedPos] = useState({ x, y });
     const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -92,7 +103,7 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
     return (
         <div
             ref={menuRef}
-            className={`${isMobile ? 'fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-50 max-h-[75dvh] overflow-y-auto rounded-2xl' : 'fixed z-50 min-w-[200px] rounded-lg'} flex flex-col gap-0.5 border border-telegram-border bg-telegram-surface/95 p-1.5 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100`}
+            className={`${isMobile ? 'fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-50 max-h-[75dvh] overflow-y-auto rounded-2xl' : 'fixed z-50 min-w-[220px] rounded-lg'} flex flex-col gap-0.5 border border-telegram-border bg-telegram-surface/95 p-1.5 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100`}
             style={isMobile ? undefined : { left: adjustedPos.x, top: adjustedPos.y }}
             onClick={(e) => e.stopPropagation()}
             onContextMenu={(e) => e.preventDefault()}
@@ -164,6 +175,13 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
                 </button>
             )}
 
+            {onMove && !file.trashed && (
+                <button onClick={onMove} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full">
+                    <FolderInput className="w-4 h-4 text-telegram-primary" />
+                    Move
+                </button>
+            )}
+
             <button onClick={onRename} disabled={!onRename || file.trashed} className="flex items-center gap-2 px-2 py-1.5 text-sm text-telegram-text hover:bg-telegram-hover rounded transition-colors text-left w-full disabled:cursor-not-allowed disabled:opacity-50">
                 <Pencil className="w-4 h-4" />
                 Rename
@@ -205,16 +223,24 @@ export function ContextMenu({ x, y, file, onClose, onDownload, onDelete, onPrevi
             )}
 
             {file.type === 'folder' && onSetFolderColor && !file.trashed && (
-                <div className="flex items-center gap-1 px-2 py-1">
-                    {['#facc15', '#38bdf8', '#4ade80', '#f472b6', '#a78bfa', '#fb7185'].map((color) => (
+                <div className="px-2 py-2">
+                    <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-telegram-subtext">Folder color</div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                    {folderColorOptions.map((option) => (
                         <button
-                            key={color}
-                            onClick={() => onSetFolderColor(color)}
-                            className="h-5 w-5 rounded-full border border-white/20"
-                            style={{ backgroundColor: color }}
-                            title={color}
-                        />
+                            key={option.label}
+                            onClick={() => onSetFolderColor(option.value)}
+                            className="flex items-center gap-2 rounded-md border border-transparent px-1.5 py-1 text-left text-xs text-telegram-text transition hover:border-telegram-border hover:bg-telegram-hover"
+                            title={option.label}
+                        >
+                            <span
+                                className="h-4 w-4 shrink-0 rounded-full border border-white/20"
+                                style={{ backgroundColor: option.preview }}
+                            />
+                            <span className="truncate">{option.label}</span>
+                        </button>
                     ))}
+                    </div>
                 </div>
             )}
 
